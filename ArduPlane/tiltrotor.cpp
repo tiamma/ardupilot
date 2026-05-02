@@ -309,6 +309,8 @@ void Tiltrotor::continuous_update(void)
         if (quadplane.rc_fwd_thr_ch == nullptr) {
             // no manual throttle control, set angle to zero
             slew(0);
+
+            // 
         } else {
             // manual control of forward throttle up to max VTOL angle
             float settilt = .01f * quadplane.forward_throttle_pct();
