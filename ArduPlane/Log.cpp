@@ -444,14 +444,19 @@ const struct LogStructure Plane::log_structure[] = {
 #endif
 
 // @LoggerMessage: TILT
-// @Description: Tiltrotor tilt values
+// @Description: Tiltrotor and Bicopter control values
 // @Field: TimeUS: Time since system startup
-// @Field: Tilt: Current tilt angle, 0 deg vertical, 90 deg horizontal
-// @Field: FL: Front left tilt angle, 0 deg vertical, 90 deg horizontal
-// @Field: FR: Front right tilt angle, 0 deg vertical, 90 deg horizontal
+// @Field: PErr: Pitch angle error (degrees)
+// @Field: PDes: Desired pitch rate (deg/s)
+// @Field: PDif: Pitch differential output (-1 to 1)
+// @Field: YErr: Yaw angle error (degrees)
+// @Field: YDes: Desired yaw rate (deg/s)
+// @Field: YDif: Yaw differential output (-1 to 1)
+// @Field: LOut: Left motor output (0-1000)
+// @Field: ROut: Right motor output (0-1000)
 #if HAL_QUADPLANE_ENABLED
     { LOG_TILT_MSG, sizeof(Tiltrotor::log_tiltrotor),
-      "TILT", "Qfff",  "TimeUS,Tilt,FL,FR", "sddd", "F---" , true },
+      "TILT", "Qffffffff",  "TimeUS,PErr,PDes,PDif,YErr,YDes,YDif,LOut,ROut", "sddnddn--", "F--------" , true },
 #endif
 
 // @LoggerMessage: PIDG

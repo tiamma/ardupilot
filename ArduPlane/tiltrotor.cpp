@@ -82,6 +82,145 @@ const AP_Param::GroupInfo Tiltrotor::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("WING_FLAP", 10, Tiltrotor, flap_angle_deg, 0),
 
+    // 双旋翼串级PID控制参数
+    // @Param: BCP_ANG_P
+    // @DisplayName: Bicopter pitch angle P gain
+    // @Description: Outer loop pitch angle P gain for bicopter control
+    // @Range: 0 10
+    // @User: Standard
+    AP_GROUPINFO("P_ANG_P", 11, Tiltrotor, bicopter_pitch_angle_p, 4.5),
+
+    // @Param: BCP_ANG_I
+    // @DisplayName: Bicopter pitch angle I gain
+    // @Description: Outer loop pitch angle I gain for bicopter control
+    // @Range: 0 5
+    // @User: Standard
+    AP_GROUPINFO("P_ANG_I", 12, Tiltrotor, bicopter_pitch_angle_i, 0.5),
+
+    // @Param: BCP_ANG_D
+    // @DisplayName: Bicopter pitch angle D gain
+    // @Description: Outer loop pitch angle D gain for bicopter control
+    // @Range: 0 2
+    // @User: Standard
+    AP_GROUPINFO("P_ANG_D", 13, Tiltrotor, bicopter_pitch_angle_d, 0.1),
+
+    // @Param: BCP_ANG_IMAX
+    // @DisplayName: Bicopter pitch angle I max
+    // @Description: Outer loop pitch angle integral maximum
+    // @Units: deg/s
+    // @Range: 0 100
+    // @User: Standard
+    AP_GROUPINFO("P_A_IM", 14, Tiltrotor, bicopter_pitch_angle_imax, 30),
+
+    // @Param: BCP_RAT_P
+    // @DisplayName: Bicopter pitch rate P gain
+    // @Description: Inner loop pitch rate P gain for bicopter control
+    // @Range: 0 1
+    // @User: Standard
+    AP_GROUPINFO("P_RAT_P", 15, Tiltrotor, bicopter_pitch_rate_p, 0.15),
+
+    // @Param: BCP_RAT_I
+    // @DisplayName: Bicopter pitch rate I gain
+    // @Description: Inner loop pitch rate I gain for bicopter control
+    // @Range: 0 1
+    // @User: Standard
+    AP_GROUPINFO("P_RAT_I", 16, Tiltrotor, bicopter_pitch_rate_i, 0.1),
+
+    // @Param: BCP_RAT_D
+    // @DisplayName: Bicopter pitch rate D gain
+    // @Description: Inner loop pitch rate D gain for bicopter control
+    // @Range: 0 0.1
+    // @User: Standard
+    AP_GROUPINFO("P_RAT_D", 17, Tiltrotor, bicopter_pitch_rate_d, 0.003),
+
+    // @Param: BCP_RAT_IMAX
+    // @DisplayName: Bicopter pitch rate I max
+    // @Description: Inner loop pitch rate integral maximum
+    // @Range: 0 1
+    // @User: Standard
+    AP_GROUPINFO("P_R_IM", 18, Tiltrotor, bicopter_pitch_rate_imax, 0.3),
+
+    // @Param: BCP_MAX_RATE
+    // @DisplayName: Bicopter maximum pitch rate
+    // @Description: Maximum desired pitch rate from angle controller
+    // @Units: deg/s
+    // @Range: 50 500
+    // @User: Standard
+    AP_GROUPINFO("P_MAX_R", 19, Tiltrotor, bicopter_max_rate_dps, 200),
+
+    // @Param: BCP_MAX_DIFF
+    // @DisplayName: Bicopter maximum motor differential
+    // @Description: Maximum motor differential output (0-1 range)
+    // @Range: 0 1
+    // @User: Standard
+    AP_GROUPINFO("P_MAX_D", 20, Tiltrotor, bicopter_max_motor_diff, 0.5),
+
+    // 偏航控制参数
+    // @Param: Y_ANG_P
+    // @DisplayName: Bicopter yaw angle P gain
+    // @Description: Outer loop yaw angle P gain for bicopter control
+    // @Range: 0 10
+    // @User: Standard
+    AP_GROUPINFO("Y_ANG_P", 21, Tiltrotor, bicopter_yaw_angle_p, 4.5),
+
+    // @Param: Y_ANG_I
+    // @DisplayName: Bicopter yaw angle I gain
+    // @Description: Outer loop yaw angle I gain for bicopter control
+    // @Range: 0 5
+    // @User: Standard
+    AP_GROUPINFO("Y_ANG_I", 22, Tiltrotor, bicopter_yaw_angle_i, 0.5),
+
+    // @Param: Y_ANG_D
+    // @DisplayName: Bicopter yaw angle D gain
+    // @Description: Outer loop yaw angle D gain for bicopter control
+    // @Range: 0 2
+    // @User: Standard
+    AP_GROUPINFO("Y_ANG_D", 23, Tiltrotor, bicopter_yaw_angle_d, 0.1),
+
+    // @Param: Y_ANG_IM
+    // @DisplayName: Bicopter yaw angle I max
+    // @Description: Outer loop yaw angle integral maximum
+    // @Units: deg/s
+    // @Range: 0 100
+    // @User: Standard
+    AP_GROUPINFO("Y_A_IM", 24, Tiltrotor, bicopter_yaw_angle_imax, 30),
+
+    // @Param: Y_RAT_P
+    // @DisplayName: Bicopter yaw rate P gain
+    // @Description: Inner loop yaw rate P gain for bicopter control
+    // @Range: 0 1
+    // @User: Standard
+    AP_GROUPINFO("Y_RAT_P", 25, Tiltrotor, bicopter_yaw_rate_p, 0.15),
+
+    // @Param: Y_RAT_I
+    // @DisplayName: Bicopter yaw rate I gain
+    // @Description: Inner loop yaw rate I gain for bicopter control
+    // @Range: 0 1
+    // @User: Standard
+    AP_GROUPINFO("Y_RAT_I", 26, Tiltrotor, bicopter_yaw_rate_i, 0.1),
+
+    // @Param: Y_RAT_D
+    // @DisplayName: Bicopter yaw rate D gain
+    // @Description: Inner loop yaw rate D gain for bicopter control
+    // @Range: 0 0.1
+    // @User: Standard
+    AP_GROUPINFO("Y_RAT_D", 27, Tiltrotor, bicopter_yaw_rate_d, 0.003),
+
+    // @Param: Y_RAT_IM
+    // @DisplayName: Bicopter yaw rate I max
+    // @Description: Inner loop yaw rate integral maximum
+    // @Range: 0 1
+    // @User: Standard
+    AP_GROUPINFO("Y_R_IM", 28, Tiltrotor, bicopter_yaw_rate_imax, 0.3),
+
+    // @Param: Y_MAX_R
+    // @DisplayName: Bicopter maximum yaw rate
+    // @Description: Maximum desired yaw rate from angle controller
+    // @Units: deg/s
+    // @Range: 50 500
+    // @User: Standard
+    AP_GROUPINFO("Y_MAX_R", 29, Tiltrotor, bicopter_max_yaw_rate_dps, 90),
+
     AP_GROUPEND
 };
 
@@ -97,7 +236,6 @@ Tiltrotor::Tiltrotor(QuadPlane& _quadplane, AP_MotorsMulticopter*& _motors):quad
 
 void Tiltrotor::setup()
 {
-
     if (!enable.configured() && ((tilt_mask != 0) || (type == TILT_TYPE_BICOPTER))) {
         enable.set_and_save(1);
     }
@@ -143,6 +281,9 @@ void Tiltrotor::setup()
             SRV_Channels::set_range(SRV_Channel::k_tiltMotorRearRight, 1000);
         }
     }
+    
+    SRV_Channels::set_range(SRV_Channel::k_tiltMotorLeft,  1000);
+    SRV_Channels::set_range(SRV_Channel::k_tiltMotorRight, 1000);
 
     transition = NEW_NOTHROW Tiltrotor_Transition(quadplane, motors, *this);
     if (!transition) {
@@ -387,15 +528,19 @@ void Tiltrotor::update(void)
         return;
     }
 
-    if (type == TILT_TYPE_BINARY) {
-        binary_update();
-    } else {
-        continuous_update();
-    }
+    // if (type == TILT_TYPE_BINARY) {
+    //     binary_update();
+    // } else if (type == TILT_TYPE_BICOPTER) {
+    //     // 双旋翼串级PID控制
+    //     bicopter_update();
+    // } else {
+    //     continuous_update();
+    // }
 
-    if (type == TILT_TYPE_VECTORED_YAW) {
-        vectoring();
-    }
+    bicopter_update();
+    // if (type == TILT_TYPE_VECTORED_YAW) {
+    //     vectoring();
+    // }
 }
 
 #if HAL_LOGGING_ENABLED
@@ -407,24 +552,37 @@ void Tiltrotor::write_log()
         return;
     }
 
+    // 双旋翼模式使用新的日志格式
+    if (type == TILT_TYPE_BICOPTER) {
+        struct log_tiltrotor pkt {
+            LOG_PACKET_HEADER_INIT(LOG_TILT_MSG),
+            time_us              : AP_HAL::micros64(),
+            pitch_angle_error    : log_pitch_angle_error,
+            pitch_desired_rate   : log_pitch_desired_rate,
+            pitch_differential   : log_pitch_differential,
+            yaw_angle_error      : log_yaw_angle_error,
+            yaw_desired_rate     : log_yaw_desired_rate,
+            yaw_differential     : log_yaw_differential,
+            left_motor_output    : log_left_motor_output,
+            right_motor_output   : log_right_motor_output,
+        };
+        plane.logger.WriteBlock(&pkt, sizeof(pkt));
+        return;
+    }
+
+    // 原有的倾转翼日志格式（保持兼容性）
     struct log_tiltrotor pkt {
         LOG_PACKET_HEADER_INIT(LOG_TILT_MSG),
-        time_us      : AP_HAL::micros64(),
-        current_tilt : current_tilt * 90.0,
+        time_us              : AP_HAL::micros64(),
+        pitch_angle_error    : 0,
+        pitch_desired_rate   : 0,
+        pitch_differential   : 0,
+        yaw_angle_error      : 0,
+        yaw_desired_rate     : 0,
+        yaw_differential     : 0,
+        left_motor_output    : 0,
+        right_motor_output   : 0,
     };
-
-    if (type != TILT_TYPE_VECTORED_YAW) {
-        // Left and right tilt are invalid
-        pkt.front_left_tilt = plane.logger.quiet_nanf();
-        pkt.front_right_tilt = plane.logger.quiet_nanf();
-
-    } else {
-        // Calculate tilt angle from servo outputs
-        const float total_angle = 90.0 + tilt_yaw_angle + fixed_angle;
-        const float scale = total_angle * 0.001;
-        pkt.front_left_tilt = (SRV_Channels::get_output_scaled(SRV_Channel::k_tiltMotorLeft) * scale) - tilt_yaw_angle;
-        pkt.front_right_tilt = (SRV_Channels::get_output_scaled(SRV_Channel::k_tiltMotorRight) * scale) - tilt_yaw_angle;
-    }
 
     plane.logger.WriteBlock(&pkt, sizeof(pkt));
 }
@@ -782,6 +940,186 @@ bool Tiltrotor::tilt_over_max_angle(void) const
 {
     const float tilt_threshold = (max_angle_deg/90.0f);
     return (current_tilt > MIN(tilt_threshold, get_forward_flight_tilt()));
+}
+
+/*
+  双旋翼串级PID控制
+  俯仰控制：角度误差 → 期望角速度 → 电机差分输出
+  偏航控制：角度误差 → 期望角速度 → 电机差分输出
+  最终输出：俯仰差分 + 偏航差分 → 左右电机
+*/
+void Tiltrotor::bicopter_update()
+{
+    const uint32_t now_ms = AP_HAL::millis();
+    // 计算时间间隔
+    float dt_s = 0.02f;  // 默认50Hz
+    if (bicopter_last_update_ms != 0) {
+        dt_s = (now_ms - bicopter_last_update_ms) * 0.001f;
+        if (dt_s > 1.0f || dt_s <= 0.0f) {
+            dt_s = 0.02f;
+        }
+    }
+    bicopter_last_update_ms = now_ms;
+    
+    // ========== 俯仰控制 ==========
+    // 外环：俯仰角度控制 (Pitch Angle → Desired Pitch Rate)
+    
+    // 1. 获取当前俯仰角度和目标角度
+    float current_pitch_deg = plane.ahrs.pitch_sensor * 0.01f;  // centidegrees → degrees
+    float target_pitch_deg = plane.nav_pitch_cd * 0.01f;        // 目标俯仰角度
+    
+    // 2. 计算俯仰角度误差
+    float pitch_angle_error = target_pitch_deg - current_pitch_deg;
+    
+    // 3. 俯仰角度环PID计算
+    float pitch_angle_p = bicopter_pitch_angle_p * pitch_angle_error;
+    
+    bicopter_angle_integral += pitch_angle_error * dt_s;
+    bicopter_angle_integral = constrain_float(bicopter_angle_integral, 
+                                              -bicopter_pitch_angle_imax, 
+                                              bicopter_pitch_angle_imax);
+    float pitch_angle_i = bicopter_pitch_angle_i * bicopter_angle_integral;
+    
+    float pitch_angle_d_input = (pitch_angle_error - bicopter_last_pitch_error) / dt_s;
+    bicopter_last_pitch_error = pitch_angle_error;
+    float pitch_angle_d = bicopter_pitch_angle_d * pitch_angle_d_input;
+    
+    // 4. 计算期望俯仰角速度（外环输出）
+    float desired_pitch_rate = pitch_angle_p + pitch_angle_i + pitch_angle_d;
+    desired_pitch_rate = constrain_float(desired_pitch_rate, 
+                                        -bicopter_max_rate_dps, 
+                                        bicopter_max_rate_dps);
+    
+    // 内环：俯仰角速度控制 (Pitch Rate Error → Motor Differential)
+    float current_pitch_rate = plane.ahrs.get_gyro().y * RAD_TO_DEG;  // rad/s → deg/s
+    float pitch_rate_error = desired_pitch_rate - current_pitch_rate;
+    
+    // 5. 俯仰角速度环PID计算
+    float pitch_rate_p = bicopter_pitch_rate_p * pitch_rate_error;
+    
+    // 当角度误差小于1度时，清空积分项，防止小误差积分累积
+    if (fabsf(pitch_angle_error) < 1.0f) {
+        bicopter_rate_integral = 0.0f;
+    } else {
+        bicopter_rate_integral += pitch_rate_error * dt_s;
+        bicopter_rate_integral = constrain_float(bicopter_rate_integral, 
+                                                -bicopter_pitch_rate_imax, 
+                                                bicopter_pitch_rate_imax);
+    }
+    float pitch_rate_i = bicopter_pitch_rate_i * bicopter_rate_integral;
+    
+    float pitch_rate_d_input = (pitch_rate_error - bicopter_last_rate_error) / dt_s;
+    bicopter_last_rate_error = pitch_rate_error;
+    float pitch_rate_d = bicopter_pitch_rate_d * pitch_rate_d_input;
+    
+    // 6. 计算俯仰电机差分输出（内环输出）
+    float pitch_differential = pitch_rate_p + pitch_rate_i + pitch_rate_d;
+    pitch_differential = constrain_float(pitch_differential, -1.0f, 1.0f);
+    
+    // ========== 偏航控制 ==========
+    // 外环：偏航角度控制 (Yaw Angle → Desired Yaw Rate)
+    
+    // 1. 获取当前偏航角度和目标角度
+    float current_yaw_deg = plane.ahrs.yaw_sensor * 0.01f;  // centidegrees → degrees
+    float target_yaw_deg = 0;        // 目标偏航角度
+    
+    // 2. 计算偏航角度误差（处理360度环绕）
+    float yaw_angle_error = target_yaw_deg - current_yaw_deg;
+    if (yaw_angle_error > 180.0f) {
+        yaw_angle_error -= 360.0f;
+    } else if (yaw_angle_error < -180.0f) {
+        yaw_angle_error += 360.0f;
+    }
+    
+    // 3. 偏航角度环PID计算
+    float yaw_angle_p = bicopter_yaw_angle_p * yaw_angle_error;
+    
+    bicopter_yaw_angle_integral += yaw_angle_error * dt_s;
+    bicopter_yaw_angle_integral = constrain_float(bicopter_yaw_angle_integral, 
+                                                   -bicopter_yaw_angle_imax, 
+                                                   bicopter_yaw_angle_imax);
+    float yaw_angle_i = bicopter_yaw_angle_i * bicopter_yaw_angle_integral;
+    
+    float yaw_angle_d_input = (yaw_angle_error - bicopter_last_yaw_error) / dt_s;
+    bicopter_last_yaw_error = yaw_angle_error;
+    float yaw_angle_d = bicopter_yaw_angle_d * yaw_angle_d_input;
+    
+    // 4. 计算期望偏航角速度（外环输出）
+    float desired_yaw_rate = yaw_angle_p + yaw_angle_i + yaw_angle_d;
+    desired_yaw_rate = constrain_float(desired_yaw_rate, 
+                                      -bicopter_max_yaw_rate_dps, 
+                                      bicopter_max_yaw_rate_dps);
+    
+    // 内环：偏航角速度控制 (Yaw Rate Error → Motor Differential)
+    float current_yaw_rate = plane.ahrs.get_gyro().z * RAD_TO_DEG;  // rad/s → deg/s
+    float yaw_rate_error = desired_yaw_rate - current_yaw_rate;
+    
+    // 5. 偏航角速度环PID计算
+    float yaw_rate_p = bicopter_yaw_rate_p * yaw_rate_error;
+    
+    // 当角度误差小于1度时，清空积分项，防止小误差积分累积
+    if (fabsf(yaw_angle_error) < 1.0f) {
+        bicopter_yaw_rate_integral = 0.0f;
+    } else {
+        bicopter_yaw_rate_integral += yaw_rate_error * dt_s;
+        bicopter_yaw_rate_integral = constrain_float(bicopter_yaw_rate_integral, 
+                                                     -bicopter_yaw_rate_imax, 
+                                                     bicopter_yaw_rate_imax);
+    }
+    float yaw_rate_i = bicopter_yaw_rate_i * bicopter_yaw_rate_integral;
+    
+    float yaw_rate_d_input = (yaw_rate_error - bicopter_last_yaw_rate_error) / dt_s;
+    bicopter_last_yaw_rate_error = yaw_rate_error;
+    float yaw_rate_d = bicopter_yaw_rate_d * yaw_rate_d_input;
+    
+    // 6. 计算偏航电机差分输出（内环输出）
+    float yaw_differential = yaw_rate_p + yaw_rate_i + yaw_rate_d;
+    yaw_differential = constrain_float(yaw_differential, -1.0f, 1.0f);
+    
+    // ========== 组合输出到左右倾转电机 ==========
+    
+    // 基础位置（中位，0.5对应舵机信号500）
+    float base_position = 0.5f;
+    
+    // 组合俯仰和偏航控制
+    // 俯仰：左右电机反向（左+，右-）
+    // 偏航：左右电机同向（左+，右+）用于转向
+    float left_tilt = base_position + pitch_differential + yaw_differential;
+    float right_tilt = base_position - pitch_differential + yaw_differential;
+    
+    // 限制输出范围并转换为舵机信号 (0-1000)
+    float left_motor_output = 1000 * constrain_float(left_tilt, 0.0f, 1.0f);
+    float right_motor_output = 1000 * constrain_float(right_tilt, 0.0f, 1.0f);
+    
+    SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft, left_motor_output);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, right_motor_output);
+    
+    // ========== 保存日志数据 ==========
+    log_pitch_angle_error = pitch_angle_error;
+    log_pitch_desired_rate = desired_pitch_rate;
+    log_pitch_differential = pitch_differential;
+    log_yaw_angle_error = yaw_angle_error;
+    log_yaw_desired_rate = desired_yaw_rate;
+    log_yaw_differential = yaw_differential;
+    log_left_motor_output = left_motor_output;
+    log_right_motor_output = right_motor_output;
+    
+    // 写入日志
+    write_log();
+    
+    // ========== 调试输出（每秒一次） ==========
+    static uint32_t last_debug_ms = 0;
+    if (now_ms - last_debug_ms > 1000) {
+        last_debug_ms = now_ms;
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
+                     "Bicopter P:%.1f/%.1f Y:%.1f/%.1f PD:%.2f YD:%.2f",
+                     (double)pitch_angle_error,
+                     (double)desired_pitch_rate,
+                     (double)yaw_angle_error,
+                     (double)desired_yaw_rate,
+                     (double)pitch_differential,
+                     (double)yaw_differential);
+    }
 }
 
 #endif  // HAL_QUADPLANE_ENABLED
