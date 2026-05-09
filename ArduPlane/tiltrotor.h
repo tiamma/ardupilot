@@ -131,6 +131,12 @@ public:
     AP_Float bicopter_yaw_rate_imax;     // 偏航角速度积分限幅
     
     AP_Float bicopter_max_yaw_rate_dps;  // 最大期望偏航角速度 (deg/s)
+    
+    // 电机方向控制参数 (1, 0, -1)
+    AP_Int8 left_pitch_sign;             // 左电机俯仰方向 (1=正向, 0=禁用, -1=反向)
+    AP_Int8 right_pitch_sign;            // 右电机俯仰方向 (1=正向, 0=禁用, -1=反向)
+    AP_Int8 left_yaw_sign;               // 左电机偏航方向 (1=正向, 0=禁用, -1=反向)
+    AP_Int8 right_yaw_sign;              // 右电机偏航方向 (1=正向, 0=禁用, -1=反向)
 
 private:
 
@@ -179,6 +185,7 @@ private:
     float bicopter_last_yaw_rate_error;   // 上次偏航角速度误差（用于微分）
     
     uint32_t bicopter_last_update_ms;     // 上次更新时间
+    uint32_t bicopter_motor_update_counter; // 电机更新计数器（奇偶交替）
     
     // 双旋翼日志变量
     float log_pitch_angle_error;          // 俯仰角度误差

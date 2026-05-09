@@ -37,7 +37,7 @@ list some basic and more used commands as example.
     SkyViper GPS drone and build again:
 
     ```sh
-    ./waf configure --board skyviper-v2450
+    ./waf configure --board AET-H743-Basic
     ./waf copter
     ```
 

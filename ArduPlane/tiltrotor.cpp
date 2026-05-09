@@ -221,6 +221,35 @@ const AP_Param::GroupInfo Tiltrotor::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("Y_MAX_R", 29, Tiltrotor, bicopter_max_yaw_rate_dps, 90),
 
+    // 电机方向控制参数
+    // @Param: L_P_SIGN
+    // @DisplayName: Left motor pitch sign
+    // @Description: Left motor pitch control direction (1=normal, 0=disabled, -1=reversed)
+    // @Values: -1:Reversed, 0:Disabled, 1:Normal
+    // @User: Standard
+    AP_GROUPINFO("L_P_SI", 30, Tiltrotor, left_pitch_sign, 1),
+
+    // @Param: R_P_SIGN
+    // @DisplayName: Right motor pitch sign
+    // @Description: Right motor pitch control direction (1=normal, 0=disabled, -1=reversed)
+    // @Values: -1:Reversed, 0:Disabled, 1:Normal
+    // @User: Standard
+    AP_GROUPINFO("R_P_SI", 31, Tiltrotor, right_pitch_sign, -1),
+
+    // @Param: L_Y_SIGN
+    // @DisplayName: Left motor yaw sign
+    // @Description: Left motor yaw control direction (1=normal, 0=disabled, -1=reversed)
+    // @Values: -1:Reversed, 0:Disabled, 1:Normal
+    // @User: Standard
+    AP_GROUPINFO("L_Y_SI", 32, Tiltrotor, left_yaw_sign, -1),
+
+    // @Param: R_Y_SIGN
+    // @DisplayName: Right motor yaw sign
+    // @Description: Right motor yaw control direction (1=normal, 0=disabled, -1=reversed)
+    // @Values: -1:Reversed, 0:Disabled, 1:Normal
+    // @User: Standard
+    AP_GROUPINFO("R_Y_SI", 33, Tiltrotor, right_yaw_sign, 1),
+
     AP_GROUPEND
 };
 
@@ -232,10 +261,18 @@ const AP_Param::GroupInfo Tiltrotor::var_info[] = {
 Tiltrotor::Tiltrotor(QuadPlane& _quadplane, AP_MotorsMulticopter*& _motors):quadplane(_quadplane),motors(_motors)
 {
     AP_Param::setup_object_defaults(this, var_info);
+    bicopter_motor_update_counter = 0;
 }
 
 void Tiltrotor::setup()
 {
+
+    SRV_Channels::set_range(SRV_Channel::k_scripting1, 1000);
+    SRV_Channels::set_range(SRV_Channel::k_scripting2, 1000);
+    SRV_Channels::set_range(SRV_Channel::k_motor_tilt, 1000);
+    SRV_Channels::set_range(SRV_Channel::k_tiltMotorLeft,  1000);
+    SRV_Channels::set_range(SRV_Channel::k_tiltMotorRight, 1000);
+
     if (!enable.configured() && ((tilt_mask != 0) || (type == TILT_TYPE_BICOPTER))) {
         enable.set_and_save(1);
     }
@@ -255,6 +292,7 @@ void Tiltrotor::setup()
                         && (type != TILT_TYPE_BICOPTER));
 
 
+    
     // check if there are any permanent VTOL motors
     for (uint8_t i = 0; i < AP_MOTORS_MAX_NUM_MOTORS; ++i) {
         if (motors->is_motor_enabled(i) && !is_motor_tilting(i)) {
@@ -282,8 +320,7 @@ void Tiltrotor::setup()
         }
     }
     
-    SRV_Channels::set_range(SRV_Channel::k_tiltMotorLeft,  1000);
-    SRV_Channels::set_range(SRV_Channel::k_tiltMotorRight, 1000);
+ 
 
     transition = NEW_NOTHROW Tiltrotor_Transition(quadplane, motors, *this);
     if (!transition) {
@@ -333,7 +370,8 @@ void Tiltrotor::slew(float newtilt)
     angle_achieved = is_equal(newtilt, current_tilt);
 
     // translate to 0..1000 range and output
-    SRV_Channels::set_output_scaled(SRV_Channel::k_motor_tilt, 1000 * current_tilt);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_scripting1, 1000 * current_tilt);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_scripting2, 1000 * current_tilt);
 }
 
 // return the current tilt value that represents forward flight
@@ -442,7 +480,8 @@ void Tiltrotor::continuous_update(void)
         const float fwd_tilt_deg = MIN(degrees(atanf(fwd_g_demand)), (float)max_angle_deg);
         slew(MIN(fwd_tilt_deg * (1/90.0), get_forward_flight_tilt()));
         return;
-    } else if (!quadplane.assisted_flight &&
+    }
+    else if (!quadplane.assisted_flight &&
                (plane.control_mode == &plane.mode_qacro ||
                plane.control_mode == &plane.mode_qstabilize ||
                plane.control_mode == &plane.mode_qhover))
@@ -537,7 +576,9 @@ void Tiltrotor::update(void)
     //     continuous_update();
     // }
 
-    bicopter_update();
+    // if (type == TILT_TYPE_BICOPTER) {
+        bicopter_update();
+    // }
     // if (type == TILT_TYPE_VECTORED_YAW) {
     //     vectoring();
     // }
@@ -709,116 +750,116 @@ bool Tiltrotor::fully_up(void) const
  */
 void Tiltrotor::vectoring(void)
 {
-    // total angle the tilt can go through
-    const float total_angle = 90 + tilt_yaw_angle + fixed_angle;
-    // output value (0 to 1) to get motors pointed straight up
-    const float zero_out = tilt_yaw_angle / total_angle;
-    const float fixed_tilt_limit = fixed_angle / total_angle;
-    const float level_out = 1.0 - fixed_tilt_limit;
+    // // total angle the tilt can go through
+    // const float total_angle = 90 + tilt_yaw_angle + fixed_angle;
+    // // output value (0 to 1) to get motors pointed straight up
+    // const float zero_out = tilt_yaw_angle / total_angle;
+    // const float fixed_tilt_limit = fixed_angle / total_angle;
+    // const float level_out = 1.0 - fixed_tilt_limit;
 
-    // calculate the basic tilt amount from current_tilt
-    float base_output = zero_out + (current_tilt * (level_out - zero_out));
-    // for testing when disarmed, apply vectored yaw in proportion to rudder stick
-    // Wait TILT_DELAY_MS after disarming to allow props to spin down first.
-    constexpr uint32_t TILT_DELAY_MS = 3000;
-    uint32_t now = AP_HAL::millis();
-    if (!plane.arming.is_armed_and_safety_off() && plane.quadplane.option_is_set(QuadPlane::OPTION::DISARMED_TILT)) {
-        // this test is subject to wrapping at ~49 days, but the consequences are insignificant
-        if ((now - hal.util->get_last_armed_change()) > TILT_DELAY_MS) {
-            if (quadplane.in_vtol_mode()) {
-                float yaw_out = plane.channel_rudder->get_control_in();
-                yaw_out /= plane.channel_rudder->get_range();
-                float yaw_range = zero_out;
+    // // calculate the basic tilt amount from current_tilt
+    // float base_output = zero_out + (current_tilt * (level_out - zero_out));
+    // // for testing when disarmed, apply vectored yaw in proportion to rudder stick
+    // // Wait TILT_DELAY_MS after disarming to allow props to spin down first.
+    // constexpr uint32_t TILT_DELAY_MS = 3000;
+    // uint32_t now = AP_HAL::millis();
+    // if (!plane.arming.is_armed_and_safety_off() && plane.quadplane.option_is_set(QuadPlane::OPTION::DISARMED_TILT)) {
+    //     // this test is subject to wrapping at ~49 days, but the consequences are insignificant
+    //     if ((now - hal.util->get_last_armed_change()) > TILT_DELAY_MS) {
+    //         if (quadplane.in_vtol_mode()) {
+    //             float yaw_out = plane.channel_rudder->get_control_in();
+    //             yaw_out /= plane.channel_rudder->get_range();
+    //             float yaw_range = zero_out;
 
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  1000 * constrain_float(base_output + yaw_out * yaw_range,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, 1000 * constrain_float(base_output - yaw_out * yaw_range,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear,  1000 * constrain_float(base_output,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft,  1000 * constrain_float(base_output + yaw_out * yaw_range,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight, 1000 * constrain_float(base_output - yaw_out * yaw_range,0,1));
-            } else {
-                // fixed wing tilt
-                const float gain = fixed_gain * fixed_tilt_limit;
-                // base the tilt on elevon mixing, which means it
-                // takes account of the MIXING_GAIN. The rear tilt is
-                // based on elevator
-                const float right = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevon_right) * (1/4500.0);
-                const float left  = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevon_left) * (1/4500.0);
-                const float mid  = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevator) * (1/4500.0);
-                // front tilt is effective canards, so need to swap and use negative. Rear motors are treated live elevons.
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,1000 * constrain_float(base_output - right,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight,1000 * constrain_float(base_output - left,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft,1000 * constrain_float(base_output + left,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight,1000 * constrain_float(base_output + right,0,1));
-                SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear,  1000 * constrain_float(base_output + mid,0,1));
-            }
-        }
-        return;
-    }
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  1000 * constrain_float(base_output + yaw_out * yaw_range,0,1));
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, 1000 * constrain_float(base_output - yaw_out * yaw_range,0,1));
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear,  1000 * constrain_float(base_output,0,1));
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft,  1000 * constrain_float(base_output + yaw_out * yaw_range,0,1));
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight, 1000 * constrain_float(base_output - yaw_out * yaw_range,0,1));
+    //         } else {
+    //             // fixed wing tilt
+    //             const float gain = fixed_gain * fixed_tilt_limit;
+    //             // base the tilt on elevon mixing, which means it
+    //             // takes account of the MIXING_GAIN. The rear tilt is
+    //             // based on elevator
+    //             const float right = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevon_right) * (1/4500.0);
+    //             const float left  = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevon_left) * (1/4500.0);
+    //             const float mid  = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevator) * (1/4500.0);
+    //             // front tilt is effective canards, so need to swap and use negative. Rear motors are treated live elevons.
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,1000 * constrain_float(base_output - right,0,1));
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight,1000 * constrain_float(base_output - left,0,1));
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft,1000 * constrain_float(base_output + left,0,1));
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight,1000 * constrain_float(base_output + right,0,1));
+    //             SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear,  1000 * constrain_float(base_output + mid,0,1));
+    //         }
+    //     }
+    //     return;
+    // }
 
-    const bool no_yaw = tilt_over_max_angle();
-    if (no_yaw) {
-        // fixed wing  We need to apply inverse scaling with throttle, and remove the surface speed scaling as
-        // we don't want tilt impacted by airspeed
-        const float scaler = plane.control_mode == &plane.mode_manual?1:(quadplane.FW_vector_throttle_scaling() / plane.get_speed_scaler());
-        const float gain = fixed_gain * fixed_tilt_limit * scaler;
-        const float right = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevon_right) * (1/4500.0);
-        const float left  = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevon_left) * (1/4500.0);
-        const float mid  = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevator) * (1/4500.0);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,1000 * constrain_float(base_output - right,0,1));
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight,1000 * constrain_float(base_output - left,0,1));
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft,1000 * constrain_float(base_output + left,0,1));
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight,1000 * constrain_float(base_output + right,0,1));
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear,  1000 * constrain_float(base_output + mid,0,1));
-    } else {
-        const float yaw_out = motors->get_yaw()+motors->get_yaw_ff();
-        const float roll_out = motors->get_roll()+motors->get_roll_ff();
-        const float yaw_range = zero_out;
+    // const bool no_yaw = tilt_over_max_angle();
+    // if (no_yaw) {
+    //     // fixed wing  We need to apply inverse scaling with throttle, and remove the surface speed scaling as
+    //     // we don't want tilt impacted by airspeed
+    //     const float scaler = plane.control_mode == &plane.mode_manual?1:(quadplane.FW_vector_throttle_scaling() / plane.get_speed_scaler());
+    //     const float gain = fixed_gain * fixed_tilt_limit * scaler;
+    //     const float right = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevon_right) * (1/4500.0);
+    //     const float left  = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevon_left) * (1/4500.0);
+    //     const float mid  = gain * SRV_Channels::get_output_scaled(SRV_Channel::k_elevator) * (1/4500.0);
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,1000 * constrain_float(base_output - right,0,1));
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight,1000 * constrain_float(base_output - left,0,1));
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft,1000 * constrain_float(base_output + left,0,1));
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight,1000 * constrain_float(base_output + right,0,1));
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear,  1000 * constrain_float(base_output + mid,0,1));
+    // } else {
+    //     const float yaw_out = motors->get_yaw()+motors->get_yaw_ff();
+    //     const float roll_out = motors->get_roll()+motors->get_roll_ff();
+    //     const float yaw_range = zero_out;
 
-        // Scaling yaw with throttle
-        const float throttle = motors->get_throttle_out();
-        const float scale_min = 0.5;
-        const float scale_max = 2.0;
-        float throttle_scaler = scale_max;
-        if (is_positive(throttle)) {
-            throttle_scaler = constrain_float(motors->get_throttle_hover() / throttle, scale_min, scale_max);
-        }
+    //     // Scaling yaw with throttle
+    //     const float throttle = motors->get_throttle_out();
+    //     const float scale_min = 0.5;
+    //     const float scale_max = 2.0;
+    //     float throttle_scaler = scale_max;
+    //     if (is_positive(throttle)) {
+    //         throttle_scaler = constrain_float(motors->get_throttle_hover() / throttle, scale_min, scale_max);
+    //     }
 
-        // now apply vectored thrust for yaw and roll.
-        const float tilt_rad = radians(current_tilt*90);
-        const float sin_tilt = sinf(tilt_rad);
-        const float cos_tilt = cosf(tilt_rad);
-        // the MotorsMatrix library normalises roll factor to 0.5, so
-        // we need to use the same factor here to keep the same roll
-        // gains when tilted as we have when not tilted
-        const float avg_roll_factor = 0.5;
-        float tilt_scale = throttle_scaler * yaw_out * cos_tilt + avg_roll_factor * roll_out * sin_tilt;
+    //     // now apply vectored thrust for yaw and roll.
+    //     const float tilt_rad = radians(current_tilt*90);
+    //     const float sin_tilt = sinf(tilt_rad);
+    //     const float cos_tilt = cosf(tilt_rad);
+    //     // the MotorsMatrix library normalises roll factor to 0.5, so
+    //     // we need to use the same factor here to keep the same roll
+    //     // gains when tilted as we have when not tilted
+    //     const float avg_roll_factor = 0.5;
+    //     float tilt_scale = throttle_scaler * yaw_out * cos_tilt + avg_roll_factor * roll_out * sin_tilt;
 
-        if (fabsf(tilt_scale) > 1.0) {
-            tilt_scale = constrain_float(tilt_scale, -1.0, 1.0);
-            motors->limit.yaw = true;
-        }
+    //     if (fabsf(tilt_scale) > 1.0) {
+    //         tilt_scale = constrain_float(tilt_scale, -1.0, 1.0);
+    //         motors->limit.yaw = true;
+    //     }
 
-        const float tilt_offset = tilt_scale * yaw_range;
+    //     const float tilt_offset = tilt_scale * yaw_range;
 
-        float left_tilt = base_output + tilt_offset;
-        float right_tilt = base_output - tilt_offset;
+    //     float left_tilt = base_output + tilt_offset;
+    //     float right_tilt = base_output - tilt_offset;
 
-        // if output saturation of both left and right then set yaw limit flag
-        if (((left_tilt > 1.0) || (left_tilt < 0.0)) &&
-            ((right_tilt > 1.0) || (right_tilt < 0.0))) {
-            motors->limit.yaw = true;
-        }
+    //     // if output saturation of both left and right then set yaw limit flag
+    //     if (((left_tilt > 1.0) || (left_tilt < 0.0)) &&
+    //         ((right_tilt > 1.0) || (right_tilt < 0.0))) {
+    //         motors->limit.yaw = true;
+    //     }
 
-        // constrain and scale to ouput range
-        left_tilt = constrain_float(left_tilt,0.0,1.0) * 1000.0;
-        right_tilt = constrain_float(right_tilt,0.0,1.0) * 1000.0;
+    //     // constrain and scale to ouput range
+    //     left_tilt = constrain_float(left_tilt,0.0,1.0) * 1000.0;
+    //     right_tilt = constrain_float(right_tilt,0.0,1.0) * 1000.0;
 
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft, left_tilt);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, right_tilt);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear, 1000.0 * constrain_float(base_output,0.0,1.0));
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft, left_tilt);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight, right_tilt);
-    }
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft, left_tilt);
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, right_tilt);
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear, 1000.0 * constrain_float(base_output,0.0,1.0));
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft, left_tilt);
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight, right_tilt);
+    // }
 }
 
 /*
@@ -831,11 +872,11 @@ void Tiltrotor::bicopter_output(void)
         return;
     }
 
-    if (!quadplane.in_vtol_mode() && fully_fwd()) {
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  -SERVO_MAX);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, -SERVO_MAX);
-        return;
-    }
+    // if (!quadplane.in_vtol_mode() && fully_fwd()) {
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  -SERVO_MAX);
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, -SERVO_MAX);
+    //     return;
+    // }
 
     float throttle = SRV_Channels::get_output_scaled(SRV_Channel::k_throttle);
     if (quadplane.assisted_flight) {
@@ -846,27 +887,37 @@ void Tiltrotor::bicopter_output(void)
     }
 
     // bicopter assumes that trim is up so we scale down so match
-    float tilt_left = SRV_Channels::get_output_scaled(SRV_Channel::k_tiltMotorLeft);
-    float tilt_right = SRV_Channels::get_output_scaled(SRV_Channel::k_tiltMotorRight);
+    // float tilt_left = SRV_Channels::get_output_scaled(SRV_Channel::k_tiltMotorLeft);
+    // float tilt_right = SRV_Channels::get_output_scaled(SRV_Channel::k_tiltMotorRight);
 
-    if (is_negative(tilt_left)) {
-        tilt_left *= tilt_yaw_angle * (1/90.0);
+    // if (is_negative(tilt_left)) {
+    //     tilt_left *= tilt_yaw_angle * (1/90.0);
+    // }
+    // if (is_negative(tilt_right)) {
+    //     tilt_right *= tilt_yaw_angle * (1/90.0);
+    // }
+
+    // // reduce authority of bicopter as motors are tilted forwards
+    // const float scaling = cosf(current_tilt * M_PI_2);
+    // tilt_left  *= scaling;
+    // tilt_right *= scaling;
+
+    // // add current tilt and constrain
+    // tilt_left  = constrain_float(-(current_tilt * SERVO_MAX) + tilt_left,  -SERVO_MAX, SERVO_MAX);
+    // tilt_right = constrain_float(-(current_tilt * SERVO_MAX) + tilt_right, -SERVO_MAX, SERVO_MAX);
+
+    // SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  tilt_left);
+    // SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, tilt_right);
+    
+    // 输出QGC 看看是否运行
+    static uint32_t last_output_debug_ms = 0;
+    uint32_t now_ms = AP_HAL::millis();
+    if (now_ms - last_output_debug_ms > 1000) {
+        last_output_debug_ms = now_ms;
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
+                     "bicopter_output running, throttle:%.0f",
+                     (double)throttle);
     }
-    if (is_negative(tilt_right)) {
-        tilt_right *= tilt_yaw_angle * (1/90.0);
-    }
-
-    // reduce authority of bicopter as motors are tilted forwards
-    const float scaling = cosf(current_tilt * M_PI_2);
-    tilt_left  *= scaling;
-    tilt_right *= scaling;
-
-    // add current tilt and constrain
-    tilt_left  = constrain_float(-(current_tilt * SERVO_MAX) + tilt_left,  -SERVO_MAX, SERVO_MAX);
-    tilt_right = constrain_float(-(current_tilt * SERVO_MAX) + tilt_right, -SERVO_MAX, SERVO_MAX);
-
-    SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  tilt_left);
-    SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, tilt_right);
 }
 
 /*
@@ -950,175 +1001,248 @@ bool Tiltrotor::tilt_over_max_angle(void) const
 */
 void Tiltrotor::bicopter_update()
 {
-    const uint32_t now_ms = AP_HAL::millis();
-    // 计算时间间隔
-    float dt_s = 0.02f;  // 默认50Hz
-    if (bicopter_last_update_ms != 0) {
-        dt_s = (now_ms - bicopter_last_update_ms) * 0.001f;
-        if (dt_s > 1.0f || dt_s <= 0.0f) {
-            dt_s = 0.02f;
-        }
+    // total angle the tilt can go through
+    const float total_angle = 90 + tilt_yaw_angle;
+    // output value (0 to 1) to get motors pointed straight up
+    const float zero_out = tilt_yaw_angle / total_angle;
+
+    // calculate the basic tilt amount from current_tilt
+    float base_output = zero_out;
+
+    if (!quadplane.in_vtol_mode() && (!plane.arming.is_armed_and_safety_off() || !quadplane.assisted_flight)) {
+        // option set then if disarmed move to VTOL position to prevent ground strikes, allow tilt forward in manual mode for testing
+        const bool disarmed_tilt_up = !plane.arming.is_armed_and_safety_off() && (plane.control_mode != &plane.mode_manual) && quadplane.option_is_set(QuadPlane::OPTION::DISARMED_TILT_UP);
+        slew(disarmed_tilt_up ? 0.0 : get_forward_flight_tilt());
+        return;
     }
-    bicopter_last_update_ms = now_ms;
+
+    if (!quadplane.assisted_flight &&
+               (plane.control_mode == &plane.mode_qacro ||
+               plane.control_mode == &plane.mode_qstabilize ||
+               plane.control_mode == &plane.mode_qhover))
+    {
+        const uint32_t now_ms = AP_HAL::millis();
+        // 计算时间间隔
+        float dt_s = 0.02f;  // 默认50Hz
+        if (bicopter_last_update_ms != 0) {
+            dt_s = (now_ms - bicopter_last_update_ms) * 0.001f;
+            if (dt_s > 1.0f || dt_s <= 0.0f) {
+                dt_s = 0.02f;
+            }
+        }
+        bicopter_last_update_ms = now_ms;
+        
+        // ========== 俯仰控制 ==========
+        // 外环：俯仰角度控制 (Pitch Angle → Desired Pitch Rate)
+        
+        // 1. 获取当前俯仰角度和目标角度
+        float current_pitch_deg = plane.ahrs.pitch_sensor * 0.01f;  // centidegrees → degrees
+        float target_pitch_deg = plane.nav_pitch_cd * 0.01f;        // 目标俯仰角度
+        
+        // 2. 计算俯仰角度误差
+        float pitch_angle_error = target_pitch_deg - current_pitch_deg;
+        
+        // 3. 俯仰角度环PID计算
+        float pitch_angle_p = bicopter_pitch_angle_p * pitch_angle_error;
+        
+       
+
+        bicopter_angle_integral += pitch_angle_error * dt_s;
+        bicopter_angle_integral = constrain_float(bicopter_angle_integral, 
+                                                -bicopter_pitch_angle_imax, 
+                                                bicopter_pitch_angle_imax);
+
+        if (fabsf(target_pitch_deg) > 0) {
+            bicopter_angle_integral = 0;
+        }
+        float pitch_angle_i = bicopter_pitch_angle_i * bicopter_angle_integral;
+        
+        float pitch_angle_d_input = (pitch_angle_error - bicopter_last_pitch_error) / dt_s;
+        bicopter_last_pitch_error = pitch_angle_error;
+        float pitch_angle_d = bicopter_pitch_angle_d * pitch_angle_d_input;
+        
+        // 4. 计算期望俯仰角速度（外环输出）
+        float desired_pitch_rate = pitch_angle_p + pitch_angle_i + pitch_angle_d;
+        desired_pitch_rate = constrain_float(desired_pitch_rate, 
+                                            -bicopter_max_rate_dps, 
+                                            bicopter_max_rate_dps);
+        
+        // 内环：俯仰角速度控制 (Pitch Rate Error → Motor Differential)
+        float current_pitch_rate = plane.ahrs.get_gyro().y * RAD_TO_DEG;  // rad/s → deg/s
+        float pitch_rate_error = desired_pitch_rate - current_pitch_rate;
+        
+        // 5. 俯仰角速度环PID计算
+        float pitch_rate_p = bicopter_pitch_rate_p * pitch_rate_error;
+        
+        // 当角度误差小于1度时，清空积分项，防止小误差积分累积
     
-    // ========== 俯仰控制 ==========
-    // 外环：俯仰角度控制 (Pitch Angle → Desired Pitch Rate)
-    
-    // 1. 获取当前俯仰角度和目标角度
-    float current_pitch_deg = plane.ahrs.pitch_sensor * 0.01f;  // centidegrees → degrees
-    float target_pitch_deg = plane.nav_pitch_cd * 0.01f;        // 目标俯仰角度
-    
-    // 2. 计算俯仰角度误差
-    float pitch_angle_error = target_pitch_deg - current_pitch_deg;
-    
-    // 3. 俯仰角度环PID计算
-    float pitch_angle_p = bicopter_pitch_angle_p * pitch_angle_error;
-    
-    bicopter_angle_integral += pitch_angle_error * dt_s;
-    bicopter_angle_integral = constrain_float(bicopter_angle_integral, 
-                                              -bicopter_pitch_angle_imax, 
-                                              bicopter_pitch_angle_imax);
-    float pitch_angle_i = bicopter_pitch_angle_i * bicopter_angle_integral;
-    
-    float pitch_angle_d_input = (pitch_angle_error - bicopter_last_pitch_error) / dt_s;
-    bicopter_last_pitch_error = pitch_angle_error;
-    float pitch_angle_d = bicopter_pitch_angle_d * pitch_angle_d_input;
-    
-    // 4. 计算期望俯仰角速度（外环输出）
-    float desired_pitch_rate = pitch_angle_p + pitch_angle_i + pitch_angle_d;
-    desired_pitch_rate = constrain_float(desired_pitch_rate, 
-                                        -bicopter_max_rate_dps, 
-                                        bicopter_max_rate_dps);
-    
-    // 内环：俯仰角速度控制 (Pitch Rate Error → Motor Differential)
-    float current_pitch_rate = plane.ahrs.get_gyro().y * RAD_TO_DEG;  // rad/s → deg/s
-    float pitch_rate_error = desired_pitch_rate - current_pitch_rate;
-    
-    // 5. 俯仰角速度环PID计算
-    float pitch_rate_p = bicopter_pitch_rate_p * pitch_rate_error;
-    
-    // 当角度误差小于1度时，清空积分项，防止小误差积分累积
-    if (fabsf(pitch_angle_error) < 1.0f) {
-        bicopter_rate_integral = 0.0f;
-    } else {
         bicopter_rate_integral += pitch_rate_error * dt_s;
         bicopter_rate_integral = constrain_float(bicopter_rate_integral, 
                                                 -bicopter_pitch_rate_imax, 
                                                 bicopter_pitch_rate_imax);
+    
+
+        if (fabsf(pitch_angle_error) < 2.0f) {
+            bicopter_rate_integral = 0.0f;
+        }
+
+        float pitch_rate_i = bicopter_pitch_rate_i * bicopter_rate_integral;
+        
+        float pitch_rate_d_input = (pitch_rate_error - bicopter_last_rate_error) / dt_s;
+        bicopter_last_rate_error = pitch_rate_error;
+
+        float pitch_rate_d = bicopter_pitch_rate_d * pitch_rate_d_input;
+        
+        // 6. 计算俯仰电机差分输出（内环输出）
+        float pitch_differential = pitch_rate_p + pitch_rate_i + pitch_rate_d;
+        pitch_differential = constrain_float(pitch_differential, -1.0f, 1.0f);
+
+        // ========== 偏航控制 ==========
+        // 外环：偏航角度控制 (Yaw Angle → Desired Yaw Rate)
+        
+        // 1. 获取当前偏航角度和目标角度
+        float current_yaw_deg = plane.ahrs.yaw_sensor * 0.01f;  // centidegrees → degrees
+        float target_yaw_deg = 0;        // 目标偏航角度
+        
+        // 2. 计算偏航角度误差（处理360度环绕）
+        float yaw_angle_error = target_yaw_deg - current_yaw_deg;
+        if (yaw_angle_error > 180.0f) {
+            yaw_angle_error -= 360.0f;
+        } else if (yaw_angle_error < -180.0f) {
+            yaw_angle_error += 360.0f;
+        }
+        
+        // 3. 偏航角度环PID计算
+        float yaw_angle_p = bicopter_yaw_angle_p * yaw_angle_error;
+        
+        bicopter_yaw_angle_integral += yaw_angle_error * dt_s;
+        bicopter_yaw_angle_integral = constrain_float(bicopter_yaw_angle_integral, 
+                                                    -bicopter_yaw_angle_imax, 
+                                                    bicopter_yaw_angle_imax);
+        float yaw_angle_i = bicopter_yaw_angle_i * bicopter_yaw_angle_integral;
+        
+        float yaw_angle_d_input = (yaw_angle_error - bicopter_last_yaw_error) / dt_s;
+        bicopter_last_yaw_error = yaw_angle_error;
+        float yaw_angle_d = bicopter_yaw_angle_d * yaw_angle_d_input;
+        
+        // 4. 计算期望偏航角速度（外环输出）
+        float desired_yaw_rate = yaw_angle_p + yaw_angle_i + yaw_angle_d;
+        desired_yaw_rate = constrain_float(desired_yaw_rate, 
+                                        -bicopter_max_yaw_rate_dps, 
+                                        bicopter_max_yaw_rate_dps);
+        
+        // 内环：偏航角速度控制 (Yaw Rate Error → Motor Differential)
+        float current_yaw_rate = plane.ahrs.get_gyro().z * RAD_TO_DEG;  // rad/s → deg/s
+        float yaw_rate_error = desired_yaw_rate - current_yaw_rate;
+        
+        // 5. 偏航角速度环PID计算
+        float yaw_rate_p = bicopter_yaw_rate_p * yaw_rate_error;
+        
+        // 当角度误差小于1度时，清空积分项，防止小误差积分累积
+        if (fabsf(yaw_angle_error) < 1.0f) {
+            bicopter_yaw_rate_integral = 0.0f;
+        } else {
+            bicopter_yaw_rate_integral += yaw_rate_error * dt_s;
+            bicopter_yaw_rate_integral = constrain_float(bicopter_yaw_rate_integral, 
+                                                        -bicopter_yaw_rate_imax, 
+                                                        bicopter_yaw_rate_imax);
+        }
+        float yaw_rate_i = bicopter_yaw_rate_i * bicopter_yaw_rate_integral;
+        
+        float yaw_rate_d_input = (yaw_rate_error - bicopter_last_yaw_rate_error) / dt_s;
+        bicopter_last_yaw_rate_error = yaw_rate_error;
+        float yaw_rate_d = bicopter_yaw_rate_d * yaw_rate_d_input;
+        
+        // 6. 计算偏航电机差分输出（内环输出）
+        float yaw_differential = yaw_rate_p + yaw_rate_i + yaw_rate_d;
+        yaw_differential = constrain_float(yaw_differential, -1.0f, 1.0f);
+        
+        // ========== 组合输出到左右倾转电机 ==========
+        
+        // 基础位置（中位，0.5对应舵机信号500）
+        // float base_position = 0.5f;
+        
+        // 组合俯仰和偏航控制
+        // 俯仰：左右电机反向（左+，右-）
+        // 偏航：左右电机同向（左+，右+）用于转向
+        // float left_tilt = base_output + pitch_differential + yaw_differential;
+        // float right_tilt = base_output - pitch_differential + yaw_differential;
+
+        float pitch_range = zero_out;
+        float pitch_diff = pitch_differential * pitch_range;
+        float yaw_diff = (yaw_differential / 2.0f) * pitch_range;
+
+        if (pitch_diff > bicopter_max_motor_diff) {
+            pitch_diff = bicopter_max_motor_diff;
+        } else if (pitch_diff < -bicopter_max_motor_diff) {
+            pitch_diff = -bicopter_max_motor_diff;
+        }
+
+        float left_tilt = base_output + left_pitch_sign * pitch_diff - left_yaw_sign * yaw_diff;
+        float right_tilt = base_output + right_pitch_sign * pitch_diff + right_yaw_sign * yaw_diff;
+        
+        // 限制输出范围并转换为舵机信号 (0-1000)
+        float left_motor_output = 1000 * constrain_float(left_tilt, 0.0, 1.0);
+        float right_motor_output = 1000 * constrain_float(right_tilt, 0.0, 1.0);
+        
+        // 使用计数器交替更新电机：奇数更新左电机，偶数更新右电机
+        bicopter_motor_update_counter++;
+        if (bicopter_motor_update_counter >= 10000) {
+            bicopter_motor_update_counter = 0;
+        }
+        
+        if (bicopter_motor_update_counter % 2 == 1) {
+            // 奇数：更新左电机
+            SRV_Channels::set_output_scaled(SRV_Channel::k_scripting1, left_motor_output);
+        } else {
+            // 偶数：更新右电机
+            SRV_Channels::set_output_scaled(SRV_Channel::k_scripting2, right_motor_output);
+        }
+        
+        // ========== 保存日志数据 ==========
+        log_pitch_angle_error = pitch_angle_error;
+        log_pitch_desired_rate = desired_pitch_rate;
+        log_pitch_differential = pitch_differential;
+        log_yaw_angle_error = yaw_angle_error;
+        log_yaw_desired_rate = desired_yaw_rate;
+        log_yaw_differential = yaw_differential;
+        log_left_motor_output = left_motor_output;
+        log_right_motor_output = right_motor_output;
+        
+                
+        // ========== 调试输出（每秒一次） ==========
+        static uint32_t last_debug_ms = 0;
+        if (now_ms - last_debug_ms > 1000) {
+            last_debug_ms = now_ms;
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
+                        "Bi b:%.2f zt=%.2f,ta=%.2f PE:%.1f PD:%.1f L:%.0f R:%.0f",
+                        (double)base_output,
+                        (double)zero_out,
+                        (double)total_angle,
+                        (double)pitch_angle_error,
+                        (double)pitch_differential,
+                        (double)left_motor_output,
+                        (double)right_motor_output);
+        }
+        return;
     }
-    float pitch_rate_i = bicopter_pitch_rate_i * bicopter_rate_integral;
     
-    float pitch_rate_d_input = (pitch_rate_error - bicopter_last_rate_error) / dt_s;
-    bicopter_last_rate_error = pitch_rate_error;
-    float pitch_rate_d = bicopter_pitch_rate_d * pitch_rate_d_input;
-    
-    // 6. 计算俯仰电机差分输出（内环输出）
-    float pitch_differential = pitch_rate_p + pitch_rate_i + pitch_rate_d;
-    pitch_differential = constrain_float(pitch_differential, -1.0f, 1.0f);
-    
-    // ========== 偏航控制 ==========
-    // 外环：偏航角度控制 (Yaw Angle → Desired Yaw Rate)
-    
-    // 1. 获取当前偏航角度和目标角度
-    float current_yaw_deg = plane.ahrs.yaw_sensor * 0.01f;  // centidegrees → degrees
-    float target_yaw_deg = 0;        // 目标偏航角度
-    
-    // 2. 计算偏航角度误差（处理360度环绕）
-    float yaw_angle_error = target_yaw_deg - current_yaw_deg;
-    if (yaw_angle_error > 180.0f) {
-        yaw_angle_error -= 360.0f;
-    } else if (yaw_angle_error < -180.0f) {
-        yaw_angle_error += 360.0f;
-    }
-    
-    // 3. 偏航角度环PID计算
-    float yaw_angle_p = bicopter_yaw_angle_p * yaw_angle_error;
-    
-    bicopter_yaw_angle_integral += yaw_angle_error * dt_s;
-    bicopter_yaw_angle_integral = constrain_float(bicopter_yaw_angle_integral, 
-                                                   -bicopter_yaw_angle_imax, 
-                                                   bicopter_yaw_angle_imax);
-    float yaw_angle_i = bicopter_yaw_angle_i * bicopter_yaw_angle_integral;
-    
-    float yaw_angle_d_input = (yaw_angle_error - bicopter_last_yaw_error) / dt_s;
-    bicopter_last_yaw_error = yaw_angle_error;
-    float yaw_angle_d = bicopter_yaw_angle_d * yaw_angle_d_input;
-    
-    // 4. 计算期望偏航角速度（外环输出）
-    float desired_yaw_rate = yaw_angle_p + yaw_angle_i + yaw_angle_d;
-    desired_yaw_rate = constrain_float(desired_yaw_rate, 
-                                      -bicopter_max_yaw_rate_dps, 
-                                      bicopter_max_yaw_rate_dps);
-    
-    // 内环：偏航角速度控制 (Yaw Rate Error → Motor Differential)
-    float current_yaw_rate = plane.ahrs.get_gyro().z * RAD_TO_DEG;  // rad/s → deg/s
-    float yaw_rate_error = desired_yaw_rate - current_yaw_rate;
-    
-    // 5. 偏航角速度环PID计算
-    float yaw_rate_p = bicopter_yaw_rate_p * yaw_rate_error;
-    
-    // 当角度误差小于1度时，清空积分项，防止小误差积分累积
-    if (fabsf(yaw_angle_error) < 1.0f) {
-        bicopter_yaw_rate_integral = 0.0f;
+    if
+    (
+        quadplane.assisted_flight &&
+        transition->transition_state >= Tiltrotor_Transition::TRANSITION_TIMER
+    ) 
+    {
+        // we are transitioning to fixed wing - tilt the motors all
+        // the way forward
+        slew(get_forward_flight_tilt());
     } else {
-        bicopter_yaw_rate_integral += yaw_rate_error * dt_s;
-        bicopter_yaw_rate_integral = constrain_float(bicopter_yaw_rate_integral, 
-                                                     -bicopter_yaw_rate_imax, 
-                                                     bicopter_yaw_rate_imax);
-    }
-    float yaw_rate_i = bicopter_yaw_rate_i * bicopter_yaw_rate_integral;
-    
-    float yaw_rate_d_input = (yaw_rate_error - bicopter_last_yaw_rate_error) / dt_s;
-    bicopter_last_yaw_rate_error = yaw_rate_error;
-    float yaw_rate_d = bicopter_yaw_rate_d * yaw_rate_d_input;
-    
-    // 6. 计算偏航电机差分输出（内环输出）
-    float yaw_differential = yaw_rate_p + yaw_rate_i + yaw_rate_d;
-    yaw_differential = constrain_float(yaw_differential, -1.0f, 1.0f);
-    
-    // ========== 组合输出到左右倾转电机 ==========
-    
-    // 基础位置（中位，0.5对应舵机信号500）
-    float base_position = 0.5f;
-    
-    // 组合俯仰和偏航控制
-    // 俯仰：左右电机反向（左+，右-）
-    // 偏航：左右电机同向（左+，右+）用于转向
-    float left_tilt = base_position + pitch_differential + yaw_differential;
-    float right_tilt = base_position - pitch_differential + yaw_differential;
-    
-    // 限制输出范围并转换为舵机信号 (0-1000)
-    float left_motor_output = 1000 * constrain_float(left_tilt, 0.0f, 1.0f);
-    float right_motor_output = 1000 * constrain_float(right_tilt, 0.0f, 1.0f);
-    
-    SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft, left_motor_output);
-    SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, right_motor_output);
-    
-    // ========== 保存日志数据 ==========
-    log_pitch_angle_error = pitch_angle_error;
-    log_pitch_desired_rate = desired_pitch_rate;
-    log_pitch_differential = pitch_differential;
-    log_yaw_angle_error = yaw_angle_error;
-    log_yaw_desired_rate = desired_yaw_rate;
-    log_yaw_differential = yaw_differential;
-    log_left_motor_output = left_motor_output;
-    log_right_motor_output = right_motor_output;
-    
-    // 写入日志
-    write_log();
-    
-    // ========== 调试输出（每秒一次） ==========
-    static uint32_t last_debug_ms = 0;
-    if (now_ms - last_debug_ms > 1000) {
-        last_debug_ms = now_ms;
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
-                     "Bicopter P:%.1f/%.1f Y:%.1f/%.1f PD:%.2f YD:%.2f",
-                     (double)pitch_angle_error,
-                     (double)desired_pitch_rate,
-                     (double)yaw_angle_error,
-                     (double)desired_yaw_rate,
-                     (double)pitch_differential,
-                     (double)yaw_differential);
+        // until we have completed the transition we limit the tilt to
+        // Q_TILT_MAX. Anything above 50% throttle gets
+        // Q_TILT_MAX. Below 50% throttle we decrease linearly. This
+        // relies heavily on Q_VFWD_GAIN being set appropriately.
+       float settilt = constrain_float((SRV_Channels::get_output_scaled(SRV_Channel::k_throttle)-MAX(plane.aparm.throttle_min.get(),0)) * 0.02, 0, 1);
+       slew(MIN(settilt * max_angle_deg * (1/90.0), get_forward_flight_tilt())); 
     }
 }
 

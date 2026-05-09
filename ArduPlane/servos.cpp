@@ -792,15 +792,15 @@ void Plane::force_flare(void)
     */
     if (!control_mode->does_auto_throttle() && flare_mode != FlareMode::FLARE_DISABLED && throttle_at_zero()) {
         int32_t tilt = -SERVO_MAX;  //this is tilts up for a normal tiltrotor if at zero thrust throttle stick      
-        if (quadplane.tiltrotor.enabled() && (quadplane.tiltrotor.type == Tiltrotor::TILT_TYPE_BICOPTER)) {
-            tilt = 0; // this is tilts up for a Bicopter
-        }
+        // if (quadplane.tiltrotor.enabled() && (quadplane.tiltrotor.type == Tiltrotor::TILT_TYPE_BICOPTER)) {
+        //     tilt = 0; // this is tilts up for a Bicopter
+        // }
         if (quadplane.tailsitter.enabled()) {
             tilt = SERVO_MAX; //this is tilts up for a tailsitter
         }
-        SRV_Channels::set_output_scaled(SRV_Channel::k_motor_tilt, tilt);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft, tilt);
-        SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, tilt);
+        // SRV_Channels::set_output_scaled(SRV_Channel::k_motor_tilt, tilt);
+        // SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft, tilt);
+        // SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, tilt);
         SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRear, tilt);
         SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearLeft, tilt);
         SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRearRight, tilt);
