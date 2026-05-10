@@ -137,8 +137,29 @@ public:
     AP_Int8 right_pitch_sign;            // 右电机俯仰方向 (1=正向, 0=禁用, -1=反向)
     AP_Int8 left_yaw_sign;               // 左电机偏航方向 (1=正向, 0=禁用, -1=反向)
     AP_Int8 right_yaw_sign;              // 右电机偏航方向 (1=正向, 0=禁用, -1=反向)
+    
+    // 轨迹规划参数
+    AP_Int8 enable_trajectory;           // 启用轨迹规划 (0=禁用, 1=启用)
+    AP_Float trajectory_max_rate;        // 最大角速度 (度/秒)
+    AP_Float trajectory_max_accel;       // 最大角加速度 (度/秒²)
 
 private:
+
+    // 轨迹规划状态变量
+    float traj_start_angle;              // 轨迹起始角度
+    float traj_end_angle;                // 轨迹目标角度
+    float traj_start_time;               // 轨迹开始时间 (毫秒)
+    float traj_total_time;               // 轨迹总时间 (秒)
+    float traj_accel_time;               // 加速时间 (秒)
+    float traj_constant_time;            // 匀速时间 (秒)
+    float traj_max_rate_actual;          // 实际最大角速度
+    bool traj_has_constant_phase;        // 是否有匀速阶段
+    bool traj_active;                    // 轨迹是否激活
+    
+    // 轨迹规划辅助函数
+    void trajectory_init(float start_angle, float end_angle);
+    float trajectory_get_angle(float t);
+    float trajectory_get_rate(float t);
 
     // Tiltrotor specific log message
     struct PACKED log_tiltrotor {

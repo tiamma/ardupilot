@@ -250,6 +250,30 @@ const AP_Param::GroupInfo Tiltrotor::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("R_Y_SI", 33, Tiltrotor, right_yaw_sign, 1),
 
+    // 轨迹规划参数
+    // @Param: TRAJ_EN
+    // @DisplayName: Enable trajectory planning
+    // @Description: Enable optimal trajectory planning for angle control
+    // @Values: 0:Disabled, 1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("TR_EN", 34, Tiltrotor, enable_trajectory, 0),
+
+    // @Param: TRAJ_RATE
+    // @DisplayName: Trajectory max rate
+    // @Description: Maximum angular rate for trajectory planning
+    // @Units: deg/s
+    // @Range: 30 180
+    // @User: Advanced
+    AP_GROUPINFO("TR_R", 35, Tiltrotor, trajectory_max_rate, 90),
+
+    // @Param: TRAJ_ACCEL
+    // @DisplayName: Trajectory max acceleration
+    // @Description: Maximum angular acceleration for trajectory planning
+    // @Units: deg/s/s
+    // @Range: 60 360
+    // @User: Advanced
+    AP_GROUPINFO("TR_A", 36, Tiltrotor, trajectory_max_accel, 180),
+
     AP_GROUPEND
 };
 
@@ -262,6 +286,17 @@ Tiltrotor::Tiltrotor(QuadPlane& _quadplane, AP_MotorsMulticopter*& _motors):quad
 {
     AP_Param::setup_object_defaults(this, var_info);
     bicopter_motor_update_counter = 0;
+    
+    // 初始化轨迹规划变量
+    traj_active = false;
+    traj_start_angle = 0;
+    traj_end_angle = 0;
+    traj_start_time = 0;
+    traj_total_time = 0;
+    traj_accel_time = 0;
+    traj_constant_time = 0;
+    traj_max_rate_actual = 0;
+    traj_has_constant_phase = false;
 }
 
 void Tiltrotor::setup()
@@ -1037,7 +1072,25 @@ void Tiltrotor::bicopter_update()
         
         // 1. 获取当前俯仰角度和目标角度
         float current_pitch_deg = plane.ahrs.pitch_sensor * 0.01f;  // centidegrees → degrees
-        float target_pitch_deg = plane.nav_pitch_cd * 0.01f;        // 目标俯仰角度
+        float target_pitch_deg_raw = plane.nav_pitch_cd * 0.01f;    // 原始目标俯仰角度
+        
+        // 1.5 轨迹规划（如果启用）
+        float target_pitch_deg = target_pitch_deg_raw;
+        if (enable_trajectory == 1) {
+            // 检查目标是否改变，如果改变则重新初始化轨迹
+            static float last_target = 0;
+            if (fabsf(target_pitch_deg_raw - last_target) > 0.5f) {
+                // 目标改变，初始化新轨迹
+                trajectory_init(current_pitch_deg, target_pitch_deg_raw);
+                last_target = target_pitch_deg_raw;
+            }
+            
+            // 如果轨迹激活，使用轨迹规划的目标
+            if (traj_active) {
+                float t = (now_ms - traj_start_time) * 0.001f;  // 转换为秒
+                target_pitch_deg = trajectory_get_angle(t);
+            }
+        }
         
         // 2. 计算俯仰角度误差
         float pitch_angle_error = target_pitch_deg - current_pitch_deg;
@@ -1052,9 +1105,9 @@ void Tiltrotor::bicopter_update()
                                                 -bicopter_pitch_angle_imax, 
                                                 bicopter_pitch_angle_imax);
 
-        if (fabsf(target_pitch_deg) > 0) {
-            bicopter_angle_integral = 0;
-        }
+        // if (fabsf(target_pitch_deg) > 0) {
+        //     bicopter_angle_integral = 0;
+        // }
         float pitch_angle_i = bicopter_pitch_angle_i * bicopter_angle_integral;
         
         float pitch_angle_d_input = (pitch_angle_error - bicopter_last_pitch_error) / dt_s;
@@ -1067,9 +1120,15 @@ void Tiltrotor::bicopter_update()
                                             -bicopter_max_rate_dps, 
                                             bicopter_max_rate_dps);
         
+        float extra_elevator = desired_pitch_rate;
+        // float extra_sign = desired_pitch_rate > 0?1:-1;
+        // if (!is_zero(desired_pitch_rate) ) {
+        //     extra_elevator = extra_sign * powf(fabsf(desired_pitch_rate), 2.5) * 0.5;
+        // }
+
         // 内环：俯仰角速度控制 (Pitch Rate Error → Motor Differential)
         float current_pitch_rate = plane.ahrs.get_gyro().y * RAD_TO_DEG;  // rad/s → deg/s
-        float pitch_rate_error = desired_pitch_rate - current_pitch_rate;
+        float pitch_rate_error = extra_elevator - current_pitch_rate;
         
         // 5. 俯仰角速度环PID计算
         float pitch_rate_p = bicopter_pitch_rate_p * pitch_rate_error;
@@ -1082,7 +1141,7 @@ void Tiltrotor::bicopter_update()
                                                 bicopter_pitch_rate_imax);
     
 
-        if (fabsf(pitch_angle_error) < 2.0f) {
+        if (fabsf(pitch_angle_error) < 1.0f) {
             bicopter_rate_integral = 0.0f;
         }
 
@@ -1244,6 +1303,112 @@ void Tiltrotor::bicopter_update()
        float settilt = constrain_float((SRV_Channels::get_output_scaled(SRV_Channel::k_throttle)-MAX(plane.aparm.throttle_min.get(),0)) * 0.02, 0, 1);
        slew(MIN(settilt * max_angle_deg * (1/90.0), get_forward_flight_tilt())); 
     }
+}
+
+/*
+  轨迹规划辅助函数实现
+  基于S曲线（摆线变形）生成最优轨迹
+*/
+
+// 初始化轨迹规划
+void Tiltrotor::trajectory_init(float start_angle, float end_angle)
+{
+    traj_start_angle = start_angle;
+    traj_end_angle = end_angle;
+    traj_start_time = AP_HAL::millis();
+    
+    float angle_delta = fabsf(end_angle - start_angle);
+    float max_rate = trajectory_max_rate;
+    float max_accel = trajectory_max_accel;
+    
+    // 计算加速时间
+    float t_accel = max_rate / max_accel;
+    
+    // 加速和减速阶段的角度变化
+    float angle_accel = 0.5f * max_accel * t_accel * t_accel;
+    
+    // 检查是否需要匀速阶段
+    if (2.0f * angle_accel < angle_delta) {
+        // 需要匀速阶段（梯形速度曲线）
+        traj_has_constant_phase = true;
+        float angle_constant = angle_delta - 2.0f * angle_accel;
+        traj_constant_time = angle_constant / max_rate;
+        traj_total_time = 2.0f * t_accel + traj_constant_time;
+        traj_max_rate_actual = max_rate;
+    } else {
+        // 不需要匀速阶段（三角形速度曲线）
+        traj_has_constant_phase = false;
+        traj_constant_time = 0;
+        // 重新计算加速时间和最大速度
+        t_accel = sqrtf(angle_delta / max_accel);
+        traj_max_rate_actual = max_accel * t_accel;
+        traj_total_time = 2.0f * t_accel;
+    }
+    
+    traj_accel_time = t_accel;
+    traj_active = true;
+}
+
+// 获取当前时刻的目标角度
+float Tiltrotor::trajectory_get_angle(float t)
+{
+    if (t <= 0) {
+        return traj_start_angle;
+    }
+    if (t >= traj_total_time) {
+        traj_active = false;
+        return traj_end_angle;
+    }
+    
+    float angle_delta = traj_end_angle - traj_start_angle;
+    float sign = (angle_delta > 0) ? 1.0f : -1.0f;
+    float max_accel = trajectory_max_accel;
+    
+    float angle;
+    
+    if (t < traj_accel_time) {
+        // 加速阶段
+        angle = traj_start_angle + sign * 0.5f * max_accel * t * t;
+    } else if (traj_has_constant_phase && t < (traj_accel_time + traj_constant_time)) {
+        // 匀速阶段
+        float t_const = t - traj_accel_time;
+        float angle_accel = sign * 0.5f * max_accel * traj_accel_time * traj_accel_time;
+        angle = traj_start_angle + angle_accel + sign * traj_max_rate_actual * t_const;
+    } else {
+        // 减速阶段
+        float remaining_time = traj_total_time - t;
+        angle = traj_end_angle - sign * 0.5f * max_accel * remaining_time * remaining_time;
+    }
+    
+    return angle;
+}
+
+// 获取当前时刻的目标角速度
+float Tiltrotor::trajectory_get_rate(float t)
+{
+    if (t <= 0 || t >= traj_total_time) {
+        return 0;
+    }
+    
+    float angle_delta = traj_end_angle - traj_start_angle;
+    float sign = (angle_delta > 0) ? 1.0f : -1.0f;
+    float max_accel = trajectory_max_accel;
+    
+    float rate;
+    
+    if (t < traj_accel_time) {
+        // 加速阶段
+        rate = sign * max_accel * t;
+    } else if (traj_has_constant_phase && t < (traj_accel_time + traj_constant_time)) {
+        // 匀速阶段
+        rate = sign * traj_max_rate_actual;
+    } else {
+        // 减速阶段
+        float remaining_time = traj_total_time - t;
+        rate = sign * max_accel * remaining_time;
+    }
+    
+    return rate;
 }
 
 #endif  // HAL_QUADPLANE_ENABLED

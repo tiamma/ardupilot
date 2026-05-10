@@ -27,8 +27,11 @@ list some basic and more used commands as example.
     supported and the next section shows how to get a full list of them.
 
     ```sh
-    ./waf configure --board CubeBlack
+    ./waf configure --board CUAV-X7
     ./waf copter
+
+    source /home/vtol/venv-ardupilot/bin/activate
+    
     ```
 
     The first command should be called only once or when you want to change a
