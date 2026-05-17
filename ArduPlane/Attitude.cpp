@@ -319,6 +319,35 @@ void Plane::stabilize_stick_mixing_fbw()
 
 
 /*
+    这是垂起Z 轴稳定函数
+        1. 根据yaw传感器 判断当前的角度
+        2. 根据传感器输入 计算变差， 通过副翼输出纠正 偏航
+*/
+void Plane::stabilize_vtol_yaw(float yaw_error_cd_D)
+{
+    // 1. 将yaw角度误差归一化到 -1 到 1
+    // 假设最大误差为 ±90度 (±9000 centidegrees)
+    const float max_yaw_error = 90.0f;  // 度
+    float yaw_error_normalized = constrain_float(yaw_error_cd_D / max_yaw_error, -1.0f, 1.0f);
+    
+    // 2. 获取遥控器偏航输入 (已经是归一化的 -1 到 1)
+    float yaw_input = (float)channel_rudder->get_control_in() / (float)channel_rudder->get_range();
+    
+    // 3. 混合控制：遥控器输入 + 自动稳定
+    // 遥控器输入优先，自动稳定作为辅助
+    float combined_output = yaw_input + yaw_error_normalized;
+    
+    // 4. 限制到 -1 到 1 范围
+    combined_output = constrain_float(combined_output, -1.0f, 1.0f);
+    
+    // 5. 扩大 SERVO_MAX 倍输出给舵机，并应用增益
+    float ail_out = combined_output * (float)SERVO_MAX * 10;
+    
+    // 6. 输出到副翼通道
+    SRV_Channels::set_output_scaled(SRV_Channel::k_aileron, ail_out);
+}
+
+/*
   stabilize the yaw axis. There are 3 modes of operation:
 
     - hold a specific heading with ground steering
@@ -582,8 +611,8 @@ int16_t Plane::calc_nav_yaw_ground(void)
         steering = steerController.get_steering_out_rate(steer_rate);
     } else {
         // use a error controller on the summed error
-        int32_t yaw_error_cd = -ToDeg(steer_state.locked_course_err)*100;
-        steering = steerController.get_steering_out_angle_error(yaw_error_cd);
+        int32_t yaw_error_cd1 = -ToDeg(steer_state.locked_course_err)*100;
+        steering = steerController.get_steering_out_angle_error(yaw_error_cd1);
     }
     return constrain_int16(steering, -4500, 4500);
 }

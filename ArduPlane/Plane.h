@@ -661,12 +661,18 @@ private:
     // ground mode is true when disarmed and not flying
     bool ground_mode;
 
+    // 姿态Yaw 目标变量
+    int32_t nav_yaw_cd;
+
     // Navigation control variables
     // The instantaneous desired bank angle.  Hundredths of a degree
     int32_t nav_roll_cd;
 
     // The instantaneous desired pitch angle.  Hundredths of a degree
     int32_t nav_pitch_cd;
+
+    // 角度误差
+    float yaw_error_cd;
 
     // the aerodynamic load factor. This is calculated from the demanded
     // roll before the roll is clipped, using 1/sqrt(cos(nav_roll))
@@ -935,6 +941,8 @@ private:
     float calc_speed_scaler(void);
     float get_speed_scaler(void) const { return surface_speed_scaler; }
     bool stick_mixing_enabled(void);
+
+    void stabilize_vtol_yaw(float yaw_error_cd_D);
     void stabilize_roll();
     float stabilize_roll_get_roll_out();
     void stabilize_pitch();

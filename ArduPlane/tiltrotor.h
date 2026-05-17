@@ -54,7 +54,7 @@ public:
     float tilt_max_change(bool up, bool in_flap_range = false) const;
     float get_fully_forward_tilt() const;
     float get_forward_flight_tilt() const;
-
+    
     // update yaw target for tiltrotor transition
     void update_yaw_target();
 
@@ -155,11 +155,6 @@ private:
     float traj_max_rate_actual;          // 实际最大角速度
     bool traj_has_constant_phase;        // 是否有匀速阶段
     bool traj_active;                    // 轨迹是否激活
-    
-    // 轨迹规划辅助函数
-    void trajectory_init(float start_angle, float end_angle);
-    float trajectory_get_angle(float t);
-    float trajectory_get_rate(float t);
 
     // Tiltrotor specific log message
     struct PACKED log_tiltrotor {
@@ -186,7 +181,7 @@ private:
     // true if the current tilt angle is equal to the desired
     // with slow tilt rates the tilt angle can lag
     bool angle_achieved;
-
+    
     // refences for convenience
     QuadPlane& quadplane;
     AP_MotorsMulticopter*& motors;

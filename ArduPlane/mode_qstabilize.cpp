@@ -27,14 +27,14 @@ void ModeQStabilize::update()
         return;
     }
 
-    if (!plane.quadplane.option_is_set(QuadPlane::OPTION::INGORE_FW_ANGLE_LIMITS_IN_Q_MODES)) {
-        // by default angles are also constrained by forward flight limits
-        set_limited_roll_pitch(roll_input, pitch_input);
-    } else {
+    // if (!plane.quadplane.option_is_set(QuadPlane::OPTION::INGORE_FW_ANGLE_LIMITS_IN_Q_MODES)) {
+    //     // by default angles are also constrained by forward flight limits
+    //     set_limited_roll_pitch(roll_input, pitch_input);
+    // } else {
         // use angle max for both roll and pitch
-        plane.nav_roll_cd = roll_input * plane.quadplane.aparm.angle_max;
-        plane.nav_pitch_cd = pitch_input * plane.quadplane.aparm.angle_max;
-    }
+    plane.nav_roll_cd = roll_input * plane.quadplane.aparm.angle_max;
+    plane.nav_pitch_cd = pitch_input * plane.quadplane.aparm.angle_max;
+    // }
 }
 
 // quadplane stabilize mode

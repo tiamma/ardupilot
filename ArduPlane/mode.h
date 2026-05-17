@@ -692,6 +692,10 @@ protected:
 #if AP_QUICKTUNE_ENABLED
     bool supports_quicktune() const override { return true; }
 #endif
+
+private:
+    bool yaw_aileron_active;  // true when ailerons are in yaw-hold mode
+    float yaw_angle_offset_deg;  // yaw angle offset for yaw-hold mode
 };
 
 class ModeQLoiter : public Mode
