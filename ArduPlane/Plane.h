@@ -123,6 +123,7 @@
 #include "AP_Arming.h"
 #include "pullup.h"
 #include "systemid.h"
+#include "MPU6050.h"
 
 /*
   main APM:Plane class
@@ -283,6 +284,9 @@ private:
     // Optical flow sensor
     AP_OpticalFlow optflow;
 #endif
+
+    // MPU6050 sensor for tilt-wing angle
+    MPU6050 mpu6050;
 
 #if HAL_RALLY_ENABLED
     // Rally Points
@@ -661,6 +665,9 @@ private:
     // ground mode is true when disarmed and not flying
     bool ground_mode;
 
+    // 倾转舵机目标角度（度）
+    int32_t tilt_angle_cd;
+
     // 姿态Yaw 目标变量
     int32_t nav_yaw_cd;
 
@@ -943,6 +950,7 @@ private:
     bool stick_mixing_enabled(void);
 
     void stabilize_vtol_yaw(float yaw_error_cd_D);
+    void stabilize_vtol_yaw_rate(float desired_yaw_rate_dps);
     void stabilize_roll();
     float stabilize_roll_get_roll_out();
     void stabilize_pitch();
@@ -1146,6 +1154,11 @@ private:
     // sensors.cpp
     void read_rangefinder(void);
 #endif
+
+    // MPU6050.cpp
+    void mpu6050_init(void);
+    void mpu6050_update(void);
+    void mpu6050_recalibrate(void);
 
     // system.cpp
     void init_ardupilot() override;

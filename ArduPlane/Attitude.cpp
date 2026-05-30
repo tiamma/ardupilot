@@ -325,25 +325,137 @@ void Plane::stabilize_stick_mixing_fbw()
 */
 void Plane::stabilize_vtol_yaw(float yaw_error_cd_D)
 {
-    // 1. 将yaw角度误差归一化到 -1 到 1
-    // 假设最大误差为 ±90度 (±9000 centidegrees)
-    const float max_yaw_error = 90.0f;  // 度
-    float yaw_error_normalized = constrain_float(yaw_error_cd_D / max_yaw_error, -1.0f, 1.0f);
+    // ========== 外环：角度控制 → 期望角速度 ==========
+    // 1. 角度误差（度）
+    float yaw_angle_error_deg = plane.nav_yaw_cd - yaw_error_cd_D;
     
-    // 2. 获取遥控器偏航输入 (已经是归一化的 -1 到 1)
-    float yaw_input = (float)channel_rudder->get_control_in() / (float)channel_rudder->get_range();
+    // 2. 角度P控制 → 期望角速度（deg/s）
+    float desired_yaw_rate_dps = yaw_angle_error_deg * g2.vtol_yaw_angle_p;
     
-    // 3. 混合控制：遥控器输入 + 自动稳定
-    // 遥控器输入优先，自动稳定作为辅助
-    float combined_output = yaw_input + yaw_error_normalized;
+    // 3. 限制期望角速度
+    desired_yaw_rate_dps = constrain_float(desired_yaw_rate_dps, -g2.vtol_yaw_rate_max, g2.vtol_yaw_rate_max);
     
-    // 4. 限制到 -1 到 1 范围
-    combined_output = constrain_float(combined_output, -1.0f, 1.0f);
+    // ========== 内环：角速度PID控制 ==========
+    // 4. 读取当前偏航角速度（rad/s → deg/s）
+    float current_yaw_rate_dps = ahrs.get_gyro().z * RAD_TO_DEG;
     
-    // 5. 扩大 SERVO_MAX 倍输出给舵机，并应用增益
-    float ail_out = combined_output * (float)SERVO_MAX * 10;
+    // 5. 角速度误差（deg/s）
+    float yaw_rate_error_dps = current_yaw_rate_dps - desired_yaw_rate_dps;
     
-    // 6. 输出到副翼通道
+    // 6. 静态变量保存PID状态
+    static float yaw_rate_integral = 0.0f;
+    static float last_yaw_rate_error = 0.0f;
+    static uint32_t last_update_ms = 0;
+    static uint32_t last_debug_ms = 0;
+    
+    // 7. 计算时间间隔
+    uint32_t now_ms = AP_HAL::millis();
+    float dt_s = 0.02f;  // 默认50Hz
+    if (last_update_ms != 0) {
+        dt_s = (now_ms - last_update_ms) * 0.001f;
+        if (dt_s > 1.0f || dt_s <= 0.0f) {
+            dt_s = 0.02f;
+        }
+    }
+    last_update_ms = now_ms;
+    
+    // 8. 每隔1秒输出调试信息到GCS
+    if (now_ms - last_debug_ms >= 1000) {
+        last_debug_ms = now_ms;
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "VTOL_YAW: nav_yaw=%.2f angle_err=%.2f", 
+                     (double)(plane.nav_yaw_cd * 0.01f), (double)yaw_angle_error_deg);
+    }
+    
+    // 9. P项
+    float p_output = yaw_rate_error_dps * g2.vtol_yaw_rate_p;
+    
+    // 10. I项（积分）
+    yaw_rate_integral += yaw_rate_error_dps * dt_s;
+    // 限制积分项防止积分饱和
+    yaw_rate_integral = constrain_float(yaw_rate_integral, -g2.vtol_yaw_rate_imax, g2.vtol_yaw_rate_imax);
+    float i_output = yaw_rate_integral * g2.vtol_yaw_rate_i;
+    
+    // 11. D项（微分）
+    float yaw_rate_derivative = (yaw_rate_error_dps - last_yaw_rate_error) / dt_s;
+    float d_output = yaw_rate_derivative * g2.vtol_yaw_rate_d;
+    last_yaw_rate_error = yaw_rate_error_dps;
+    
+    // 12. PID总输出
+    float pid_output = p_output + i_output + d_output;
+    
+    // 13. 归一化到 [-1, 1]
+    const float max_output = 100.0f;  // 最大输出值
+    float normalized_output = constrain_float(pid_output / max_output, -1.0f, 1.0f);
+    
+    // 14. 输出到副翼（SERVO_MAX = 4500）
+    float ail_out = normalized_output * (float)SERVO_MAX;
+    
+    // 15. 输出到副翼通道
+    SRV_Channels::set_output_scaled(SRV_Channel::k_aileron, ail_out);
+}
+
+/*
+    VTOL偏航角速度控制 - 直接控制角速度，无角度环
+    参数: desired_yaw_rate_dps - 期望偏航角速度（deg/s）
+*/
+void Plane::stabilize_vtol_yaw_rate(float desired_yaw_rate_dps)
+{
+    // ========== 角速度PID控制（无外环） ==========
+    // 1. 读取当前偏航角速度（rad/s → deg/s）
+    float current_yaw_rate_dps = ahrs.get_gyro().z * RAD_TO_DEG;
+    
+    // 2. 角速度误差（deg/s）
+    float yaw_rate_error_dps = desired_yaw_rate_dps - current_yaw_rate_dps;
+    
+    // 3. 静态变量保存PID状态
+    static float yaw_rate_integral = 0.0f;
+    static float last_yaw_rate_error = 0.0f;
+    static uint32_t last_update_ms = 0;
+    static uint32_t last_debug_ms = 0;
+    
+    // 4. 计算时间间隔
+    uint32_t now_ms = AP_HAL::millis();
+    float dt_s = 0.02f;  // 默认50Hz
+    if (last_update_ms != 0) {
+        dt_s = (now_ms - last_update_ms) * 0.001f;
+        if (dt_s > 1.0f || dt_s <= 0.0f) {
+            dt_s = 0.02f;
+        }
+    }
+    last_update_ms = now_ms;
+    
+    // 5. 每隔1秒输出调试信息到GCS
+    if (now_ms - last_debug_ms >= 1000) {
+        last_debug_ms = now_ms;
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "VTOL_YAW_RATE: desired=%.2f current=%.2f err=%.2f", 
+                     (double)desired_yaw_rate_dps, (double)current_yaw_rate_dps, (double)yaw_rate_error_dps);
+    }
+    
+    // 6. P项
+    float p_output = yaw_rate_error_dps * g2.vtol_yaw_rate_p;
+    
+    // 7. I项（积分）
+    yaw_rate_integral += yaw_rate_error_dps * dt_s;
+    // 限制积分项防止积分饱和
+    yaw_rate_integral = constrain_float(yaw_rate_integral, -g2.vtol_yaw_rate_imax, g2.vtol_yaw_rate_imax);
+    float i_output = yaw_rate_integral * g2.vtol_yaw_rate_i;
+    
+    // 8. D项（微分）
+    float yaw_rate_derivative = (yaw_rate_error_dps - last_yaw_rate_error) / dt_s;
+    float d_output = yaw_rate_derivative * g2.vtol_yaw_rate_d;
+    last_yaw_rate_error = yaw_rate_error_dps;
+    
+    // 9. PID总输出
+    float pid_output = p_output + i_output + d_output;
+    
+    // 10. 归一化到 [-1, 1]
+    const float max_output = 100.0f;  // 最大输出值
+    float normalized_output = constrain_float(pid_output / max_output, -1.0f, 1.0f);
+    
+    // 11. 输出到副翼（SERVO_MAX = 4500）
+    float ail_out = -normalized_output * (float)SERVO_MAX;
+    
+    // 12. 输出到副翼通道
     SRV_Channels::set_output_scaled(SRV_Channel::k_aileron, ail_out);
 }
 

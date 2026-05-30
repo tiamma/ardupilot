@@ -1302,6 +1302,55 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Path: systemid.cpp
     AP_SUBGROUPINFO(systemid, "SID", 38, ParametersG2, AP_SystemID),
 #endif
+
+    // @Param: VTOL_YAW_ANG_P
+    // @DisplayName: VTOL Yaw Angle P gain
+    // @Description: P gain for outer loop yaw angle control (angle to rate)
+    // @Range: 0.5 10.0
+    // @Increment: 0.1
+    // @User: Standard
+    AP_GROUPINFO("VTOL_YAW_ANG_P", 39, ParametersG2, vtol_yaw_angle_p, 2.0),
+
+    // @Param: VTOL_YAW_RT_P
+    // @DisplayName: VTOL Yaw Rate P gain
+    // @Description: P gain for inner loop yaw rate control
+    // @Range: 0.1 2.0
+    // @Increment: 0.05
+    // @User: Standard
+    AP_GROUPINFO("VTOL_YAW_RT_P", 40, ParametersG2, vtol_yaw_rate_p, 0.5),
+
+    // @Param: VTOL_YAW_RT_I
+    // @DisplayName: VTOL Yaw Rate I gain
+    // @Description: I gain for inner loop yaw rate control
+    // @Range: 0.0 1.0
+    // @Increment: 0.01
+    // @User: Standard
+    AP_GROUPINFO("VTOL_YAW_RT_I", 41, ParametersG2, vtol_yaw_rate_i, 0.1),
+
+    // @Param: VTOL_YAW_RT_D
+    // @DisplayName: VTOL Yaw Rate D gain
+    // @Description: D gain for inner loop yaw rate control
+    // @Range: 0.0 0.2
+    // @Increment: 0.005
+    // @User: Standard
+    AP_GROUPINFO("VTOL_YAW_RT_D", 42, ParametersG2, vtol_yaw_rate_d, 0.02),
+
+    // @Param: VTOL_YAW_RT_IMAX
+    // @DisplayName: VTOL Yaw Rate I max
+    // @Description: Maximum integrator value for yaw rate control
+    // @Range: 0 50
+    // @Increment: 1
+    // @User: Standard
+    AP_GROUPINFO("VTOL_YAW_RT_IMAX", 43, ParametersG2, vtol_yaw_rate_imax, 10.0),
+
+    // @Param: VTOL_YAW_RT_MAX
+    // @DisplayName: VTOL Yaw Rate Max
+    // @Description: Maximum yaw rate in deg/s
+    // @Range: 10 180
+    // @Units: deg/s
+    // @Increment: 5
+    // @User: Standard
+    AP_GROUPINFO("VTOL_YAW_RT_MAX", 44, ParametersG2, vtol_yaw_rate_max, 90.0),
     
     AP_GROUPEND
 };

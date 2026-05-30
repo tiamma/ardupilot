@@ -659,7 +659,8 @@ public:
     
 protected:
 private:
-
+    bool yaw_aileron_active;  // true when ailerons are in yaw-hold mode
+    float yaw_angle_offset_deg;  // yaw angle offset for yaw-hold mode
     void set_tailsitter_roll_pitch(const float roll_input, const float pitch_input);
     void set_limited_roll_pitch(const float roll_input, const float pitch_input);
 

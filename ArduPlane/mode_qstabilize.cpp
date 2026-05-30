@@ -6,6 +6,8 @@
 bool ModeQStabilize::_enter()
 {
     quadplane.throttle_wait = false;
+    yaw_aileron_active = false;
+    yaw_angle_offset_deg = plane.ahrs.yaw_sensor * 0.01f;
     return true;
 }
 
@@ -40,12 +42,30 @@ void ModeQStabilize::update()
 // quadplane stabilize mode
 void ModeQStabilize::run()
 {
+    // ========== 原有VTOL悬停控制 ==========
+    const float rudder_input = (float)plane.channel_rudder->get_control_in() / plane.channel_rudder->get_range();
+        
     const uint32_t now = AP_HAL::millis();
     if (quadplane.tailsitter.in_vtol_transition(now)) {
         // Tailsitters in FW pull up phase of VTOL transition run FW controllers
         Mode::run();
         return;
     }
+
+        // 检测通道7，用于重置偏航角基准
+    int16_t ch7_value = 0;
+    RC_Channel *ch7 = RC_Channels::rc_channel(6);  // 通道7 (索引从0开始，所以是6)
+    if (ch7 != nullptr) {
+        ch7_value = ch7->get_radio_in();
+        // 如果通道7 > 1700 (高位)，重置偏航角基准
+        if (ch7_value > 1700) {
+            yaw_angle_offset_deg = plane.ahrs.yaw_sensor * 0.01f;
+        }
+    }
+
+    // float yaw_angle = plane.ahrs.yaw_sensor * 0.01f;
+    // float angle_error = fmodf((float)(yaw_angle - yaw_angle_offset_deg + 180), 360.0f) - 180.0f;
+        
 
     plane.quadplane.assign_tilt_to_fwd_thr();
 
@@ -61,10 +81,15 @@ void ModeQStabilize::run()
     float pilot_throttle_scaled = quadplane.get_pilot_throttle();
     quadplane.hold_stabilize(pilot_throttle_scaled);
 
+    // 方向舵摇杆 → 期望偏航速率（deg/s）
+    // get_rate() 返回的就是 deg/s，不需要除以100
+    const float desired_yaw_rate_dps = rudder_input * quadplane.command_model_pilot.get_rate();
+    
+    // 使用纯角速度控制（无角度环）
+    plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps);
     // Stabilize with fixed wing surfaces
-    plane.stabilize_roll();
+    // plane.stabilize_roll();
     plane.stabilize_pitch();
-
     // Center rudder
     output_rudder_and_steering(0.0);
 }

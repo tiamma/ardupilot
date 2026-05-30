@@ -580,6 +580,14 @@ public:
     
     AP_Int8         axis_bitmask; // axes to be autotuned
 
+    // VTOL偏航控制PID参数
+    AP_Float        vtol_yaw_angle_p;      // 外环角度P增益
+    AP_Float        vtol_yaw_rate_p;       // 内环角速度P增益
+    AP_Float        vtol_yaw_rate_i;       // 内环角速度I增益
+    AP_Float        vtol_yaw_rate_d;       // 内环角速度D增益
+    AP_Float        vtol_yaw_rate_imax;    // 内环积分限幅
+    AP_Float        vtol_yaw_rate_max;     // 最大角速度 (deg/s)
+
     // just to make compilation easier when all things are compiled out...
     uint8_t unused_integer;
 

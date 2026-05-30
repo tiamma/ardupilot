@@ -41,6 +41,8 @@ list some basic and more used commands as example.
 
     ```sh
     ./waf configure --board AET-H743-Basic
+
+    ./waf configure --board CUAV-X7
     ./waf copter
     ```
 

@@ -640,6 +640,11 @@ private:
     // are we in spin recovery?
     bool in_spin_recovery;
 
+    // 倾转旋翼的pitch角度
+    float mpu6050_angle_pitch;
+    
+    // 倾转旋翼的roll角度
+    float mpu6050_angle_roll;
     /*
       return true if current mission item is a vtol takeoff
      */

@@ -132,6 +132,15 @@ public:
     
     AP_Float bicopter_max_yaw_rate_dps;  // 最大期望偏航角速度 (deg/s)
     
+    // 速度控制参数 (Velocity → Pitch Angle)
+    AP_Float bicopter_vel_p;             // 速度P增益
+    AP_Float bicopter_vel_i;             // 速度I增益
+    AP_Float bicopter_vel_d;             // 速度D增益
+    AP_Float bicopter_vel_imax;          // 速度积分限幅
+    AP_Float bicopter_max_vel_mps;       // 最大期望速度 (m/s)
+    AP_Float bicopter_max_vel_pitch_deg; // 速度控制最大俯仰角 (度)
+    AP_Int8 velocity_pitch_sign;         // 速度控制俯仰方向 (1=正向, -1=反向)
+    
     // 电机方向控制参数 (1, 0, -1)
     AP_Int8 left_pitch_sign;             // 左电机俯仰方向 (1=正向, 0=禁用, -1=反向)
     AP_Int8 right_pitch_sign;            // 右电机俯仰方向 (1=正向, 0=禁用, -1=反向)
@@ -142,6 +151,15 @@ public:
     AP_Int8 enable_trajectory;           // 启用轨迹规划 (0=禁用, 1=启用)
     AP_Float trajectory_max_rate;        // 最大角速度 (度/秒)
     AP_Float trajectory_max_accel;       // 最大角加速度 (度/秒²)
+    
+    // 倾转角度闭环控制PID参数
+    AP_Float tilt_ts_angle_p;            // 倾转角度P增益
+    AP_Float tilt_ts_angle_i;            // 倾转角度I增益
+    AP_Float tilt_ts_angle_d;            // 倾转角度D增益
+    AP_Float tilt_ts_angle_imax;         // 倾转角度积分限幅
+    AP_Float tilt_ts_correction_max;     // PID修正量最大值
+    AP_Int8 vofa_enable;                 // 启用VOFA日志输出 (0=禁用, 1=启用)
+    AP_Float tilt_angle_rate_max;        // 通道2控制目标角度的最大变化率 (度/秒)
 
 private:
 
@@ -155,6 +173,11 @@ private:
     float traj_max_rate_actual;          // 实际最大角速度
     bool traj_has_constant_phase;        // 是否有匀速阶段
     bool traj_active;                    // 轨迹是否激活
+    
+    // 通道12控制目标角度状态变量
+    float manual_target_tilt_angle;      // 手动控制的目标倾转角度
+    uint32_t last_tilt_angle_update_ms;  // 上次角度更新时间
+    float target_tilt_angle;             // 当前目标倾转角度（度）
 
     // Tiltrotor specific log message
     struct PACKED log_tiltrotor {
@@ -200,6 +223,11 @@ private:
     float bicopter_last_yaw_error;        // 上次偏航角度误差（用于微分）
     float bicopter_last_yaw_rate_error;   // 上次偏航角速度误差（用于微分）
     
+    // 速度控制状态变量
+    float bicopter_vel_integral;          // 速度环积分项
+    float bicopter_last_vel_error;        // 上次速度误差（用于微分）
+    float bicopter_vel_feedforward_filtered; // 速度前馈滤波后的值
+    
     uint32_t bicopter_last_update_ms;     // 上次更新时间
     uint32_t bicopter_motor_update_counter; // 电机更新计数器（奇偶交替）
     
@@ -207,14 +235,33 @@ private:
     float log_pitch_angle_error;          // 俯仰角度误差
     float log_pitch_desired_rate;         // 期望俯仰角速度
     float log_pitch_differential;         // 俯仰差分输出
+    float log_pitch_rate_error;           // 俯仰角速度误差
+    float log_pitch_rate_integral;        // 俯仰角速度积分项
+    float log_pitch_rate_p;               // 俯仰角速度P输出
     float log_yaw_angle_error;            // 偏航角度误差
     float log_yaw_desired_rate;           // 期望偏航角速度
     float log_yaw_differential;           // 偏航差分输出
     float log_left_motor_output;          // 左电机输出
     float log_right_motor_output;         // 右电机输出
+    float log_velocity_error;             // 速度误差
+    float log_current_velocity;           // 当前速度
+    float log_desired_velocity;           // 期望速度
+    float log_velocity_pitch_cmd;         // 速度控制输出的俯仰角指令
     
     // 双旋翼控制函数
     void bicopter_update();
+    
+    // 垂直姿态飞行PID计算
+    void vtol_pid_get_rate(float base_output, float zero_out, 
+                           float &pitch_differential, float &yaw_differential,
+                           float &pitch_angle_error, float &desired_pitch_rate,
+                           float &yaw_angle_error, float &desired_yaw_rate,
+                           float &left_motor_output, float &right_motor_output);
+    
+    // 切换姿态倾转角度闭环控制 (基于MPU6050反馈)
+    void transition_pid_get_rate();
+
+    void transition_get_rate(float zero_out, float pitch_angle_error, float &pitch_differential, float &left_motor_output);
 
 };
 

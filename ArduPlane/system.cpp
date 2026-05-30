@@ -11,7 +11,6 @@ void Plane::init_ardupilot()
 {
 
     ins.set_log_raw_bit(MASK_LOG_IMU_RAW);
-
     rollController.convert_pid();
     pitchController.convert_pid();
 
@@ -42,6 +41,9 @@ void Plane::init_ardupilot()
     rangefinder.set_log_rfnd_bit(MASK_LOG_SONAR);
     rangefinder.init(ROTATION_PITCH_270);
 #endif
+
+    // initialise MPU6050 for tilt-wing angle
+    // mpu6050_init();
 
     // initialise battery monitoring
     battery.init();
