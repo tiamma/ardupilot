@@ -98,13 +98,13 @@ stabilize_vtol_yaw_rate(desired_yaw_rate_dps);
 ### **输入处理**
 ```cpp
 rudder_input = channel_rudder->get_control_in() / range  // [-1, 1]
-rate = quadplane.command_model_pilot.get_rate()          // 默认90 deg/s
-desired_yaw_rate = rudder_input × rate / 100             // deg/s
+rate = g2.vtol_yaw_input_rate                            // VTOL_YAW_INPUT_RT参数
+desired_yaw_rate = rudder_input × rate                   // deg/s
 ```
 
 **示例**：
-| 方向舵位置 | rudder_input | rate | desired_yaw_rate |
-|-----------|--------------|------|------------------|
+| 方向舵位置 | rudder_input | VTOL_YAW_INPUT_RT | desired_yaw_rate |
+|-----------|--------------|-------------------|------------------|
 | 中位 | 0.0 | 90 | 0°/s |
 | 右满杆 | +1.0 | 90 | +90°/s |
 | 左满杆 | -1.0 | 90 | -90°/s |
@@ -162,6 +162,7 @@ D输出 = d(35)/dt × 0.02
 
 | 参数 | 默认值 | 作用 |
 |------|--------|------|
+| `VTOL_YAW_INPUT_RT` | 90.0 | 方向舵输入最大角速度 ⭐ |
 | `VTOL_YAW_RT_P` | 0.5 | 角速度跟踪响应速度 |
 | `VTOL_YAW_RT_I` | 0.1 | 消除稳态误差 |
 | `VTOL_YAW_RT_D` | 0.02 | 抑制振荡 |
@@ -173,6 +174,14 @@ D输出 = d(35)/dt × 0.02
 ---
 
 ### **调参建议**
+
+#### **转速太慢/太快**
+```
+现象：满杆时转速不合适
+解决：调整 VTOL_YAW_INPUT_RT
+太慢：VTOL_YAW_INPUT_RT = 120  (从90增加)
+太快：VTOL_YAW_INPUT_RT = 60   (从90减小)
+```
 
 #### **响应太慢**
 ```

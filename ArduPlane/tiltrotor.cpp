@@ -381,6 +381,13 @@ const AP_Param::GroupInfo Tiltrotor::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("TILT_RT", 50, Tiltrotor, tilt_angle_rate_max, 10.0),
 
+    // @Param: FF_SIGN
+    // @DisplayName: Feedforward sign control
+    // @Description: Controls the sign of feedforward output for pitch differential. Set to 1.0 for normal direction, -1.0 for reversed direction.
+    // @Values: -1.0:Reversed, 1.0:Normal
+    // @User: Advanced
+    AP_GROUPINFO("FF_SI", 51, Tiltrotor, feedforward_sign, 1.0),
+
     AP_GROUPEND
 };
 
@@ -1063,16 +1070,6 @@ void Tiltrotor::bicopter_output(void)
 
     // SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorLeft,  tilt_left);
     // SRV_Channels::set_output_scaled(SRV_Channel::k_tiltMotorRight, tilt_right);
-    
-    // 输出QGC 看看是否运行
-    static uint32_t last_output_debug_ms = 0;
-    uint32_t now_ms = AP_HAL::millis();
-    if (now_ms - last_output_debug_ms > 1000) {
-        last_output_debug_ms = now_ms;
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
-                     "bicopter_output running, throttle:%.0f",
-                     (double)throttle);
-    }
 }
 
 /*
@@ -1336,6 +1333,7 @@ void Tiltrotor::transition_pid_get_rate() {
     float left_servo_output = 1000 * final_output;
     float right_servo_output = 1000 * final_output;
     
+    current_tilt = left_servo_output;
     // 输出到倾转舵机
     SRV_Channels::set_output_scaled(SRV_Channel::k_scripting1, left_servo_output);
     SRV_Channels::set_output_scaled(SRV_Channel::k_scripting2, right_servo_output);
@@ -1378,19 +1376,62 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     float desired_velocity_mps = rc_pitch_input * bicopter_max_vel_mps;
     log_desired_velocity = desired_velocity_mps;
     
-    // 3. 获取当前前后速度
-    Vector3f velocity_ned;
+    // 3. 获取当前前后速度（通过加速度积分）
+    static float integrated_velocity_mps = 0.0f;  // 积分速度
+    static uint32_t last_accel_update_ms = 0;
+    static uint32_t last_velocity_reset_ms = 0;  // 上次速度重置时间
+    
     float current_velocity_mps = 0.0f;
     bool velocity_valid = false;
     
-    // 使用EKF融合速度（推荐方案）
-    if (plane.ahrs.get_velocity_NED(velocity_ned)) {
-        // 将NED速度转换到机体坐标系
-        Vector3f velocity_body = plane.ahrs.get_rotation_body_to_ned().transposed() * velocity_ned;
-        current_velocity_mps = velocity_body.x;  // 机体X轴为前向
-        velocity_valid = true;
+    // 每隔3秒重置积分速度，防止漂移累积
+    if (now_ms - last_velocity_reset_ms >= 3000) {
+        integrated_velocity_mps = 0.0f;
+        last_velocity_reset_ms = now_ms;
     }
     
+    // 获取机体坐标系加速度
+    Vector3f accel_body = plane.ins.get_accel();  // m/s²
+    
+    // 计算加速度积分时间间隔
+    float accel_dt_s = dt_s;
+    if (last_accel_update_ms != 0) {
+        accel_dt_s = (now_ms - last_accel_update_ms) * 0.001f;
+        if (accel_dt_s > 0.1f || accel_dt_s <= 0.0f) {
+            accel_dt_s = dt_s;  // 使用默认值
+        }
+    }
+
+    last_accel_update_ms = now_ms;
+    
+    // 补偿重力加速度（将加速度转换到世界坐标系，去除重力，再转回机体坐标系）
+    // 获取姿态旋转矩阵
+    const Matrix3f &rot_body_to_ned = plane.ahrs.get_rotation_body_to_ned();
+    
+    // 将机体加速度转换到NED坐标系
+    Vector3f accel_ned = rot_body_to_ned * accel_body;
+    
+    // 去除重力加速度（NED坐标系中，重力在Z轴负方向）
+    accel_ned.z += GRAVITY_MSS;  // GRAVITY_MSS ≈ 9.80665 m/s²
+    
+    // 转回机体坐标系
+    Vector3f accel_body_corrected = rot_body_to_ned.transposed() * accel_ned;
+    
+    // 提取前向加速度（机体X轴）
+    float forward_accel_mps2 = accel_body_corrected.x;
+    
+    // 速度积分
+    integrated_velocity_mps += forward_accel_mps2 * accel_dt_s;
+    
+    // 添加衰减因子，防止积分漂移（可选）
+    // const float decay_factor = 0.98f;  // 每次更新衰减2%
+    // integrated_velocity_mps *= decay_factor;
+    
+    current_velocity_mps = integrated_velocity_mps;
+    velocity_valid = true;
+    
+
+    // 
     log_current_velocity = current_velocity_mps;
     
     // 4. 速度环PID计算
@@ -1442,11 +1483,10 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     
     // 7. 低通滤波平滑前馈输出，降低灵敏度
     // 滤波系数：0.1 = 较慢响应，0.5 = 中等响应，0.9 = 快速响应
-    const float filter_alpha = 0.3f;  // 可调整：0.1-0.5之间
-    bicopter_vel_feedforward_filtered = bicopter_vel_feedforward_filtered * (1.0f - filter_alpha) + 
-                                        velocity_feedforward * filter_alpha;
-    velocity_feedforward = bicopter_vel_feedforward_filtered;
-    
+    // const float filter_alpha = 0.3f;  // 可调整：0.1-0.5之间
+    // bicopter_vel_feedforward_filtered = bicopter_vel_feedforward_filtered * (1.0f - filter_alpha) +  velocity_feedforward * filter_alpha;
+    // velocity_feedforward = bicopter_vel_feedforward_filtered;
+    velocity_feedforward = velocity_feedforward * 0.25f;
     // ========== 俯仰控制 ==========
     // 外环：俯仰角度控制 (Pitch Angle → Desired Pitch Rate)
     
@@ -1525,6 +1565,7 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     // 6. 计算俯仰电机差分输出（内环输出）
     pitch_differential = pitch_rate_p + pitch_rate_i + pitch_rate_d;
     pitch_differential = constrain_float(pitch_differential, -1.0f, 1.0f);
+
     log_pitch_rate_error = pitch_rate_error / MAX((float)bicopter_max_rate_dps, 1.0f); // [-1, 1]
     log_pitch_rate_p     = pitch_rate_p;                                                // 原始P分量
 
@@ -1594,14 +1635,13 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     // ========== 组合输出到左右倾转电机 ==========
     float pitch_range = zero_out;
     float pitch_diff = pitch_differential * pitch_range;
-    float yaw_diff = (yaw_differential / 2.0f) * pitch_range;
     
     // 添加角度前馈输出到俯仰差分
-    float feedforward_diff = feedforward_output * pitch_range;
+    float feedforward_diff = feedforward_sign * feedforward_output * pitch_range * (angle_max / 30.0f);
     pitch_diff += feedforward_diff;
     
     // 添加速度控制前馈到俯仰差分
-    // float velocity_feedforward_diff = velocity_pitch_sign * velocity_feedforward * pitch_range;
+    // float velocity_feedforward_diff = velocity_pitch_sign * velocity_feedforward;
     // pitch_diff += velocity_feedforward_diff;
     
     if (pitch_diff > bicopter_max_motor_diff) {
@@ -1609,10 +1649,17 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     } else if (pitch_diff < -bicopter_max_motor_diff) {
         pitch_diff = -bicopter_max_motor_diff;
     }
+
+       
+    // 计算偏航差分
+    float yaw_diff = (yaw_differential / 2.0f) * pitch_range;
     
     float left_tilt = base_output + left_pitch_sign * pitch_diff - left_yaw_sign * yaw_diff;
     float right_tilt = base_output + right_pitch_sign * pitch_diff + right_yaw_sign * yaw_diff;
     
+
+    current_tilt = left_tilt;
+
     // 限制输出范围并转换为舵机信号 (0-1000)
     left_motor_output = 1000 * constrain_float(left_tilt, 0.0, 1.0);
     right_motor_output = 1000 * constrain_float(right_tilt, 0.0, 1.0);
@@ -1689,7 +1736,6 @@ void Tiltrotor::bicopter_update()
     // 保存目标角度到全局变量（度 → centidegrees）
     plane.tilt_angle_cd = target_tilt_angle * 100.0f;
     
-    
     // total angle the tilt can go through
     const float total_angle = 90 + tilt_yaw_angle;
     // output value (0 to 1) to get motors pointed straight up
@@ -1702,7 +1748,7 @@ void Tiltrotor::bicopter_update()
         // option set then if disarmed move to VTOL position to prevent ground strikes, allow tilt forward in manual mode for testing
         // const bool disarmed_tilt_up = !plane.arming.is_armed_and_safety_off() && (plane.control_mode != &plane.mode_manual) && quadplane.option_is_set(QuadPlane::OPTION::DISARMED_TILT_UP);
         // slew(disarmed_tilt_up ? 0.0 : get_forward_flight_tilt());
-        return;
+        // return;
     }
 
     if (!quadplane.assisted_flight &&
@@ -1803,8 +1849,6 @@ void Tiltrotor::bicopter_update()
         transition->transition_state >= Tiltrotor_Transition::TRANSITION_TIMER
     ) 
     {
-        // we are transitioning to fixed wing - tilt the motors all
-        // the way forward
         // slew(get_forward_flight_tilt());
     } else {
         // until we have completed the transition we limit the tilt to

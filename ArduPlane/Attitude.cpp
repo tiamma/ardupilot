@@ -346,7 +346,7 @@ void Plane::stabilize_vtol_yaw(float yaw_error_cd_D)
     static float yaw_rate_integral = 0.0f;
     static float last_yaw_rate_error = 0.0f;
     static uint32_t last_update_ms = 0;
-    static uint32_t last_debug_ms = 0;
+    // static uint32_t last_debug_ms = 0;
     
     // 7. 计算时间间隔
     uint32_t now_ms = AP_HAL::millis();
@@ -360,11 +360,11 @@ void Plane::stabilize_vtol_yaw(float yaw_error_cd_D)
     last_update_ms = now_ms;
     
     // 8. 每隔1秒输出调试信息到GCS
-    if (now_ms - last_debug_ms >= 1000) {
-        last_debug_ms = now_ms;
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "VTOL_YAW: nav_yaw=%.2f angle_err=%.2f", 
-                     (double)(plane.nav_yaw_cd * 0.01f), (double)yaw_angle_error_deg);
-    }
+    // if (now_ms - last_debug_ms >= 1000) {
+    //     last_debug_ms = now_ms;
+    //     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "VTOL_YAW: nav_yaw=%.2f angle_err=%.2f", 
+    //                  (double)(plane.nav_yaw_cd * 0.01f), (double)yaw_angle_error_deg);
+    // }
     
     // 9. P项
     float p_output = yaw_rate_error_dps * g2.vtol_yaw_rate_p;
@@ -411,7 +411,7 @@ void Plane::stabilize_vtol_yaw_rate(float desired_yaw_rate_dps)
     static float yaw_rate_integral = 0.0f;
     static float last_yaw_rate_error = 0.0f;
     static uint32_t last_update_ms = 0;
-    static uint32_t last_debug_ms = 0;
+    // static uint32_t last_debug_ms = 0;
     
     // 4. 计算时间间隔
     uint32_t now_ms = AP_HAL::millis();
@@ -423,13 +423,6 @@ void Plane::stabilize_vtol_yaw_rate(float desired_yaw_rate_dps)
         }
     }
     last_update_ms = now_ms;
-    
-    // 5. 每隔1秒输出调试信息到GCS
-    if (now_ms - last_debug_ms >= 1000) {
-        last_debug_ms = now_ms;
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "VTOL_YAW_RATE: desired=%.2f current=%.2f err=%.2f", 
-                     (double)desired_yaw_rate_dps, (double)current_yaw_rate_dps, (double)yaw_rate_error_dps);
-    }
     
     // 6. P项
     float p_output = yaw_rate_error_dps * g2.vtol_yaw_rate_p;

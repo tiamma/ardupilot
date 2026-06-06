@@ -1351,6 +1351,15 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @Increment: 5
     // @User: Standard
     AP_GROUPINFO("VTOL_YAW_RT_MAX", 44, ParametersG2, vtol_yaw_rate_max, 90.0),
+
+    // @Param: VTOL_YAW_INPUT_RT
+    // @DisplayName: VTOL Yaw Input Rate
+    // @Description: Maximum yaw rate from rudder input in VTOL modes (deg/s). This defines how fast the aircraft will yaw when rudder stick is at maximum deflection.
+    // @Range: 10 360
+    // @Units: deg/s
+    // @Increment: 5
+    // @User: Standard
+    AP_GROUPINFO("VTOL_YAW_I_RT", 45, ParametersG2, vtol_yaw_input_rate, 90.0),
     
     AP_GROUPEND
 };

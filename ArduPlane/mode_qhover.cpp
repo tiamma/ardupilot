@@ -111,38 +111,16 @@ void ModeQHover::run()
             quadplane.hold_hover(quadplane.get_pilot_desired_climb_rate_cms());
         }
 
-        float yaw_angle = plane.ahrs.yaw_sensor * 0.01f;
-        float angle_error = fmodf((float)(yaw_angle - yaw_angle_offset_deg + 180), 360.0f) - 180.0f;
-        
-        // 每隔1秒输出调试信息
-        static uint32_t last_debug_ms = 0;
-        if (now - last_debug_ms >= 1000) {
-            last_debug_ms = now;
-            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "QHOVER: angle_error=%.2f ch7=%d offset=%.2f tilt=%.2f", 
-                         (double)angle_error, (int)ch7_value, (double)yaw_angle_offset_deg, (double)tilt_angle_deg);
-        }
-        
-        // 横滚摇杆 → 偏航速率（deg/s）
-        // get_rate() 返回的就是 deg/s，不需要除以100
-        const float yaw_rate_dps = rudder_input * quadplane.command_model_pilot.get_rate();
-        // 累积到目标偏航角（度）
-        float max_change = 0.0f;
-
-        if (yaw_rate_dps * plane.G_Dt > 0) {
-            max_change = (float)MIN(yaw_rate_dps * plane.G_Dt, 90);
-        } else if (yaw_rate_dps * plane.G_Dt < 0) {
-            max_change = (float)MAX(-90, yaw_rate_dps * plane.G_Dt);
-        }
-
-         
-        
-        plane.nav_yaw_cd = yaw_angle_offset_deg + max_change;
-        plane.yaw_error_cd = angle_error;
         
         // Stabilize with fixed wing surfaces
         // plane.stabilize_roll();
-        plane.stabilize_pitch();
-        plane.stabilize_vtol_yaw(angle_error);
+        // plane.stabilize_pitch();
+        
+            // 方向舵摇杆 → 期望偏航速率（deg/s）
+        // get_rate() 返回的就是 deg/s，不需要除以100
+        const float desired_yaw_rate_dps = rudder_input * plane.g2.vtol_yaw_input_rate;
+        // 使用纯角速度控制（无角度环）
+        plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps);
         // Center rudder
         output_rudder_and_steering(0.0);
         // possibly apply spin recovery

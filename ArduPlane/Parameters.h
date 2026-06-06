@@ -587,6 +587,7 @@ public:
     AP_Float        vtol_yaw_rate_d;       // 内环角速度D增益
     AP_Float        vtol_yaw_rate_imax;    // 内环积分限幅
     AP_Float        vtol_yaw_rate_max;     // 最大角速度 (deg/s)
+    AP_Float        vtol_yaw_input_rate;   // 方向舵输入最大角速度 (deg/s)
 
     // just to make compilation easier when all things are compiled out...
     uint8_t unused_integer;

@@ -22,20 +22,20 @@ void ModeQStabilize::update()
     const float roll_input = (float)plane.channel_roll->get_control_in() / plane.channel_roll->get_range();
     const float pitch_input = (float)plane.channel_pitch->get_control_in() / plane.channel_pitch->get_range();
 
-    // then scale to target angles in centidegrees
-    if (plane.quadplane.tailsitter.active()) {
-        // tailsitters are different
-        set_tailsitter_roll_pitch(roll_input, pitch_input);
-        return;
-    }
+    // // then scale to target angles in centidegrees
+    // if (plane.quadplane.tailsitter.active()) {
+    //     // tailsitters are different
+    //     set_tailsitter_roll_pitch(roll_input, pitch_input);
+    //     return;
+    // }
 
     // if (!plane.quadplane.option_is_set(QuadPlane::OPTION::INGORE_FW_ANGLE_LIMITS_IN_Q_MODES)) {
     //     // by default angles are also constrained by forward flight limits
-    //     set_limited_roll_pitch(roll_input, pitch_input);
+        set_limited_roll_pitch(roll_input, pitch_input);
     // } else {
         // use angle max for both roll and pitch
-    plane.nav_roll_cd = roll_input * plane.quadplane.aparm.angle_max;
-    plane.nav_pitch_cd = pitch_input * plane.quadplane.aparm.angle_max;
+    // plane.nav_roll_cd = roll_input * plane.quadplane.aparm.angle_max;
+    // plane.nav_pitch_cd = pitch_input * plane.quadplane.aparm.angle_max;
     // }
 }
 
@@ -52,21 +52,6 @@ void ModeQStabilize::run()
         return;
     }
 
-        // 检测通道7，用于重置偏航角基准
-    int16_t ch7_value = 0;
-    RC_Channel *ch7 = RC_Channels::rc_channel(6);  // 通道7 (索引从0开始，所以是6)
-    if (ch7 != nullptr) {
-        ch7_value = ch7->get_radio_in();
-        // 如果通道7 > 1700 (高位)，重置偏航角基准
-        if (ch7_value > 1700) {
-            yaw_angle_offset_deg = plane.ahrs.yaw_sensor * 0.01f;
-        }
-    }
-
-    // float yaw_angle = plane.ahrs.yaw_sensor * 0.01f;
-    // float angle_error = fmodf((float)(yaw_angle - yaw_angle_offset_deg + 180), 360.0f) - 180.0f;
-        
-
     plane.quadplane.assign_tilt_to_fwd_thr();
 
     // special check for ESC calibration in QSTABILIZE
@@ -80,16 +65,14 @@ void ModeQStabilize::run()
     // normal QSTABILIZE mode
     float pilot_throttle_scaled = quadplane.get_pilot_throttle();
     quadplane.hold_stabilize(pilot_throttle_scaled);
-
     // 方向舵摇杆 → 期望偏航速率（deg/s）
-    // get_rate() 返回的就是 deg/s，不需要除以100
-    const float desired_yaw_rate_dps = rudder_input * quadplane.command_model_pilot.get_rate();
-    
+    // 使用VTOL_YAW_INPUT_RT参数定义最大角速度
+    const float desired_yaw_rate_dps = rudder_input * plane.g2.vtol_yaw_input_rate;
     // 使用纯角速度控制（无角度环）
     plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps);
-    // Stabilize with fixed wing surfaces
+
     // plane.stabilize_roll();
-    plane.stabilize_pitch();
+    // plane.stabilize_pitch();
     // Center rudder
     output_rudder_and_steering(0.0);
 }

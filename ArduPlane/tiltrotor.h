@@ -160,6 +160,7 @@ public:
     AP_Float tilt_ts_correction_max;     // PID修正量最大值
     AP_Int8 vofa_enable;                 // 启用VOFA日志输出 (0=禁用, 1=启用)
     AP_Float tilt_angle_rate_max;        // 通道2控制目标角度的最大变化率 (度/秒)
+    AP_Float feedforward_sign;           // 前馈输出符号控制 (1.0=正向, -1.0=反向)
 
 private:
 
