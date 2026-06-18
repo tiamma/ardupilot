@@ -950,7 +950,7 @@ private:
     bool stick_mixing_enabled(void);
 
     void stabilize_vtol_yaw(float yaw_error_cd_D);
-    void stabilize_vtol_yaw_rate(float desired_yaw_rate_dps);
+    void stabilize_vtol_yaw_rate(float desired_yaw_rate_dps, float scaling = 1.0f);
     void stabilize_roll();
     float stabilize_roll_get_roll_out();
     void stabilize_pitch();

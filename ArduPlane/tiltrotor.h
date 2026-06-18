@@ -84,6 +84,8 @@ public:
     AP_Float fixed_gain;
     AP_Float flap_angle_deg;
 
+    float angle_revise = 0.0f;
+    float angle_k = 0.0f;
     float current_tilt;
     float current_throttle;
     bool _motors_active:1;
@@ -161,6 +163,7 @@ public:
     AP_Int8 vofa_enable;                 // 启用VOFA日志输出 (0=禁用, 1=启用)
     AP_Float tilt_angle_rate_max;        // 通道2控制目标角度的最大变化率 (度/秒)
     AP_Float feedforward_sign;           // 前馈输出符号控制 (1.0=正向, -1.0=反向)
+    AP_Float tilt_angle_scale;           // 通道16控制倾转角度的缩放系数 (度)
 
 private:
 

@@ -22,26 +22,15 @@ void ModeQStabilize::update()
     const float roll_input = (float)plane.channel_roll->get_control_in() / plane.channel_roll->get_range();
     const float pitch_input = (float)plane.channel_pitch->get_control_in() / plane.channel_pitch->get_range();
 
-    // // then scale to target angles in centidegrees
-    // if (plane.quadplane.tailsitter.active()) {
-    //     // tailsitters are different
-    //     set_tailsitter_roll_pitch(roll_input, pitch_input);
-    //     return;
-    // }
-
-    // if (!plane.quadplane.option_is_set(QuadPlane::OPTION::INGORE_FW_ANGLE_LIMITS_IN_Q_MODES)) {
-    //     // by default angles are also constrained by forward flight limits
-        set_limited_roll_pitch(roll_input, pitch_input);
-    // } else {
-        // use angle max for both roll and pitch
-    // plane.nav_roll_cd = roll_input * plane.quadplane.aparm.angle_max;
-    // plane.nav_pitch_cd = pitch_input * plane.quadplane.aparm.angle_max;
-    // }
+    set_limited_roll_pitch(roll_input, pitch_input);
+ 
 }
 
 // quadplane stabilize mode
 void ModeQStabilize::run()
 {
+    float tilt_angle_deg = plane.tilt_angle_cd * 0.01f;
+    
     // ========== 原有VTOL悬停控制 ==========
     const float rudder_input = (float)plane.channel_rudder->get_control_in() / plane.channel_rudder->get_range();
         
@@ -68,8 +57,14 @@ void ModeQStabilize::run()
     // 方向舵摇杆 → 期望偏航速率（deg/s）
     // 使用VTOL_YAW_INPUT_RT参数定义最大角速度
     const float desired_yaw_rate_dps = rudder_input * plane.g2.vtol_yaw_input_rate;
+
+    // 根据倾转角度计算缩放系数：0°时=1.0，30°时=0.0
+    // 线性映射：scaling = 1.0 - (tilt_angle / 30.0)
+    const float max_tilt_for_yaw = 30.0f;  // 最大有效倾转角度
+    const float scaling = constrain_float(1.0f - (tilt_angle_deg / max_tilt_for_yaw), 0.0f, 1.0f);
+
     // 使用纯角速度控制（无角度环）
-    plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps);
+    plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps, scaling);
 
     // plane.stabilize_roll();
     // plane.stabilize_pitch();

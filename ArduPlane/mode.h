@@ -545,7 +545,6 @@ public:
     bool mode_allows_autotuning() const override { return true; }
 
     void run() override;
-
 };
 
 class ModeFBWB : public Mode

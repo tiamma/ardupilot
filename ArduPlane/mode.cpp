@@ -255,9 +255,9 @@ void Mode::run()
 {
     // Direct stick mixing functionality has been removed, so as not to remove all stick mixing from the user completely
     // the old direct option is now used to enable fbw mixing, this is easier than doing a param conversion.
-    if ((plane.g.stick_mixing == StickMixing::FBW) || (plane.g.stick_mixing == StickMixing::DIRECT_REMOVED)) {
-        plane.stabilize_stick_mixing_fbw();
-    }
+    // if ((plane.g.stick_mixing == StickMixing::FBW) || (plane.g.stick_mixing == StickMixing::DIRECT_REMOVED)) {
+    //     plane.stabilize_stick_mixing_fbw();
+    // }
     plane.stabilize_roll();
     plane.stabilize_pitch();
     plane.stabilize_yaw();
@@ -296,19 +296,30 @@ void Mode::output_rudder_and_steering(float val)
 // Otherwise apply curve for trim correction if configured
 void Mode::output_pilot_throttle()
 {
-    if (plane.g.throttle_passthru_stabilize) {
-        // THR_PASS_STAB set, direct mapping
-        SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, plane.get_throttle_input(true));
-        return;
-    }
+    // if (plane.g.throttle_passthru_stabilize) {
+    //     // THR_PASS_STAB set, direct mapping
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, plane.get_throttle_input(true));
+    //     return;
+    // }
 
     // get throttle, but adjust center to output TRIM_THROTTLE if flight option set
-    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, plane.get_adjusted_throttle_input(true));
+    float th_input = plane.get_adjusted_throttle_input(true);
+    
+    // 每秒输出一次油门值用于调试
+    static uint32_t last_debug_ms = 0;
+    uint32_t now_ms = AP_HAL::millis();
+    if (now_ms - last_debug_ms >= 1000) {
+        last_debug_ms = now_ms;
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Throttle: th_input=%.2f", (double)th_input);
+    }
+    
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, th_input);
 }
 
 // true if throttle min/max limits should be applied
 bool Mode::use_throttle_limits() const
 {
+    return false;
 #if AP_SCRIPTING_ENABLED
     if (plane.nav_scripting_active()) {
         return false;
@@ -341,6 +352,7 @@ bool Mode::use_throttle_limits() const
 // true if voltage correction should be applied to throttle
 bool Mode::use_battery_compensation() const
 {
+    return false;
 #if AP_SCRIPTING_ENABLED
     if (plane.nav_scripting_active()) {
         return false;

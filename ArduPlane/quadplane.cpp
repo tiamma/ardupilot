@@ -1507,6 +1507,20 @@ void SLT_Transition::update()
         transition_state = TRANSITION_DONE;
         transition_start_ms = 0;
         transition_low_airspeed_ms = 0;
+        quadplane.assisted_flight = false;
+    }
+
+
+    // 检查遥控器12通道，如果在高位则强制完成转换
+    int ch12_pwm = RC_Channels::get_radio_in(11);  // 通道12（索引11）
+    if (ch12_pwm > 1700) {  // 高位阈值
+        if (transition_state < TRANSITION_DONE) {
+            gcs().send_text(MAV_SEVERITY_INFO, "Transition forced by CH12, have_airspeed=%d", have_airspeed);
+            transition_state = TRANSITION_DONE;
+            transition_start_ms = 0;
+            transition_low_airspeed_ms = 0;
+            quadplane.assisted_flight = false;
+        }
     }
 
     if (transition_state < TRANSITION_DONE) {
@@ -1521,7 +1535,7 @@ void SLT_Transition::update()
         quadplane.set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
         // we hold in hover until the required airspeed is reached
         if (transition_start_ms == 0) {
-            gcs().send_text(MAV_SEVERITY_INFO, "Transition airspeed wait");
+            gcs().send_text(MAV_SEVERITY_INFO, "Transition airspeed wait  111");
             transition_start_ms = now;
         }
 
@@ -1529,13 +1543,15 @@ void SLT_Transition::update()
         if (transition_start_ms != 0 &&
         (quadplane.transition_failure.timeout > 0) &&
         ((now - transition_start_ms) > ((uint32_t)quadplane.transition_failure.timeout * 1000))) {
+            const bool tiltrotor_with_ground_speed = quadplane.tiltrotor.enabled() && (plane.ahrs.groundspeed() > plane.aparm.airspeed_min * 0.5);
+            
             if (!quadplane.transition_failure.warned) {
-                gcs().send_text(MAV_SEVERITY_CRITICAL, "Transition failed, exceeded time limit");
+                gcs().send_text(MAV_SEVERITY_CRITICAL, "Transition failed, exceeded time limit, tiltrotor_gs=%d", tiltrotor_with_ground_speed);
                 quadplane.transition_failure.warned = true;
             }
             // if option is set and ground speed> 1/2 AIRSPEED_MIN for non-tiltrotors, then complete transition, otherwise QLAND.
             // tiltrotors will immediately transition
-            const bool tiltrotor_with_ground_speed = quadplane.tiltrotor.enabled() && (plane.ahrs.groundspeed() > plane.aparm.airspeed_min * 0.5);
+            
             if (quadplane.option_is_set(QuadPlane::OPTION::TRANS_FAIL_TO_FW) && tiltrotor_with_ground_speed) {
                 transition_state = TRANSITION_TIMER;
                 in_forced_transition = true;
@@ -1658,15 +1674,15 @@ void SLT_Transition::update()
     }
 
     case TRANSITION_DONE:
-        quadplane.set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
+        // quadplane.set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
         motors->output();
         set_last_fw_pitch();
+        quadplane.assisted_flight = false;
         in_forced_transition = false;
         return;
     }
 
-    quadplane.motors_output();
-
+    // quadplane.motors_output();
     set_last_fw_pitch();
 }
 
@@ -1760,14 +1776,11 @@ void QuadPlane::update(void)
         }
 
     } else {
-
         assisted_flight = in_vtol_airbrake();
-
         // output to motors
         motors_output();
 
         transition->VTOL_update();
-
     }
 
     // disable throttle_wait when throttle rises above 10%
@@ -2014,6 +2027,16 @@ void QuadPlane::motors_output(bool run_rate_controller)
         last_motors_active_ms = now;
     }
 
+    // 输出 run_rate_controller 在 GCS（每秒一次）
+    static uint32_t last_debug_ms = 0;
+    if (now - last_debug_ms >= 1000) {
+        last_debug_ms = now;
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
+                     "RateCtrl: %d throttle: %.2f active: %d", 
+                     run_rate_controller,
+                     (double)motors->get_throttle(),
+                     tiltrotor.motors_active());
+    }
 }
 
 /*
@@ -4228,7 +4251,6 @@ bool QuadPlane::show_vtol_view() const
 // return true if we should show VTOL view
 bool SLT_Transition::show_vtol_view() const
 {
-
     return quadplane.in_vtol_mode();
 }
 
@@ -4379,6 +4401,24 @@ float QuadPlane::get_land_airspeed(void)
 void QuadPlane::set_desired_spool_state(AP_Motors::DesiredSpoolState state)
 {
     if (motors->get_desired_spool_state() != state) {
+        // 输出状态变化到GCS
+        const char* state_name;
+        switch (state) {
+            case AP_Motors::DesiredSpoolState::SHUT_DOWN:
+                state_name = "SHUT_DOWN";
+                break;
+            case AP_Motors::DesiredSpoolState::GROUND_IDLE:
+                state_name = "GROUND_IDLE";
+                break;
+            case AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED:
+                state_name = "THROTTLE_UNLIMITED";
+                break;
+            default:
+                state_name = "UNKNOWN";
+                break;
+        }
+        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Spool state: %s", state_name);
+        
         if (state == AP_Motors::DesiredSpoolState::SHUT_DOWN) {
             // also request zero throttle, so we avoid the slow ramp down
             motors->set_roll(0);

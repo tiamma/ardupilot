@@ -445,6 +445,7 @@ void Copter::allocate_motors(void)
     attitude_control = NEW_NOTHROW AC_AttitudeControl_Heli(*ahrs_view, aparm, *motors);
     attitude_control_var_info = AC_AttitudeControl_Heli::var_info;
 #endif
+
     if (attitude_control == nullptr) {
         AP_BoardConfig::allocation_error("AttitudeControl");
     }

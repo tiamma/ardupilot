@@ -596,36 +596,37 @@ void Plane::set_throttle(void)
 {
 
     // Update voltage scaling
-    g2.fwd_batt_cmp.update();
+    // g2.fwd_batt_cmp.update();
 
-    if (control_mode->use_battery_compensation()) {
-        // Apply voltage compensation to throttle output from flight mode
-        const float throttle = g2.fwd_batt_cmp.apply_throttle(SRV_Channels::get_output_scaled(SRV_Channel::k_throttle));
-        SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
-    }
+    // if (control_mode->use_battery_compensation()) {
+    //     // Apply voltage compensation to throttle output from flight mode
+    //     const float throttle = g2.fwd_batt_cmp.apply_throttle(SRV_Channels::get_output_scaled(SRV_Channel::k_throttle));
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
+    // }
 
-    if (control_mode->use_throttle_limits()) {
-        // Apply min/max throttle limits
-        const float limited_throttle = apply_throttle_limits(SRV_Channels::get_output_scaled(SRV_Channel::k_throttle));
-        SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, limited_throttle);
-    }
+    // if (control_mode->use_throttle_limits()) {
+    //     // Apply min/max throttle limits
+    //     const float limited_throttle = apply_throttle_limits(SRV_Channels::get_output_scaled(SRV_Channel::k_throttle));
+    //     SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, limited_throttle);
+    // }
 
-    if (suppress_throttle()) {
-        if (g.throttle_suppress_manual) {
-            // manual pass through of throttle while throttle is suppressed
-            SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, get_throttle_input(true));
+    // if (suppress_throttle()) {
+    //     if (g.throttle_suppress_manual) {
+    //         // manual pass through of throttle while throttle is suppressed
+    //         SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, get_throttle_input(true));
 
-        } else if (landing.is_flaring() && landing.use_thr_min_during_flare() ) {
-            // throttle is suppressed (above) to zero in final flare in auto mode, but we allow instead thr_min if user prefers, eg turbines:
-            SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, aparm.throttle_min.get());
+    //     } else if (landing.is_flaring() && landing.use_thr_min_during_flare() ) {
+    //         // throttle is suppressed (above) to zero in final flare in auto mode, but we allow instead thr_min if user prefers, eg turbines:
+    //         SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, aparm.throttle_min.get());
 
-        } else {
-            // default
-            SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, 0.0);
+    //     } else {
+    //         // default
+    //         SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, 0.0);
 
-        }
-    }
+    //     }
+    // }
 
+    SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, get_throttle_input(true));
 }
 
 /*
@@ -1020,7 +1021,6 @@ void Plane::servos_output(void)
     }
 
     SRV_Channels::calc_pwm();
-
     SRV_Channels::output_ch_all();
 
     srv.push();

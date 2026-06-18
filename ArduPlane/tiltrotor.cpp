@@ -388,6 +388,15 @@ const AP_Param::GroupInfo Tiltrotor::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("FF_SI", 51, Tiltrotor, feedforward_sign, 1.0),
 
+    // @Param: TILT_ANG_SCALE
+    // @DisplayName: Tilt angle scale from CH16
+    // @Description: Scaling factor for tilt angle control from channel 16. CH16 input (-1 to 1) is multiplied by this value to get target tilt angle in degrees.
+    // @Range: 0 90
+    // @Units: deg
+    // @Increment: 0.5
+    // @User: Standard
+    AP_GROUPINFO("ANG_SC", 52, Tiltrotor, tilt_angle_scale, 5.0),
+
     AP_GROUPEND
 };
 
@@ -479,12 +488,16 @@ void Tiltrotor::setup()
         }
     }
     
- 
+    // 初始化的时候在GCS输出配置信息
+    gcs().send_text(MAV_SEVERITY_INFO, "Tiltinit:f_m=%d vt_m=%d t_m=%u", 
+                   _have_fw_motor, _have_vtol_motor, (unsigned)tilt_mask);
 
     transition = NEW_NOTHROW Tiltrotor_Transition(quadplane, motors, *this);
+
     if (!transition) {
         AP_BoardConfig::allocation_error("tiltrotor transition");
     }
+
     quadplane.transition = transition;
 
     setup_complete = true;
@@ -724,6 +737,28 @@ void Tiltrotor::update(void)
     if (!enabled() || tilt_mask == 0) {
         // no motors to tilt
         return;
+    }
+
+    RC_Channel *ch13 = RC_Channels::rc_channel(12);  // 通道16（索引从0开始）
+    if (ch13 != nullptr) {
+        // 获取归一化输入 [-1, 1]
+        float ch13_input = ch13->norm_input();
+        angle_revise = ch13_input / 5;
+        // 限制范围
+        angle_revise = constrain_float(angle_revise, -0.2f, 0.2f);
+    }
+
+
+     // 从16通道读取angle_k值（通道16，索引15）
+      // 默认值
+    RC_Channel *ch14 = RC_Channels::rc_channel(13);  // 通道16（索引从0开始）
+    if (ch14 != nullptr) {
+        // 获取归一化输入 [-1, 1]
+        float ch14_input = ch14->norm_input();
+        // 映射到 [0, 1] 范围
+        angle_k = (ch14_input + 1.0f) * 0.5f;
+        // 限制范围
+        angle_k = constrain_float(angle_k, 0.0f, 1.0f);
     }
 
     // if (type == TILT_TYPE_BINARY) {
@@ -1040,6 +1075,10 @@ void Tiltrotor::bicopter_output(void)
     //     return;
     // }
 
+    if (plane.control_mode == &plane.mode_fbwa) {
+        return;
+    }
+    
     float throttle = SRV_Channels::get_output_scaled(SRV_Channel::k_throttle);
     if (quadplane.assisted_flight) {
         quadplane.hold_stabilize(throttle * 0.01f);
@@ -1254,12 +1293,10 @@ void Tiltrotor::transition_pid_get_rate() {
     // 读取当前电机位置并转换为0-1范围
     int16_t current_output = SRV_Channels::get_output_scaled(SRV_Channel::k_scripting1);
     float norm_current_output = current_output / 1000.0f;
-    
     // 静态变量保存状态
     static float tilt_integral = 0.0f;
     static float last_angle_error = 0.0f;
     static uint32_t last_update_ms = 0;
-    
     // 计算时间间隔
     uint32_t now_ms = AP_HAL::millis();
     float dt_s = 0.02f; // 默认50Hz
@@ -1306,26 +1343,8 @@ void Tiltrotor::transition_pid_get_rate() {
     static uint32_t last_debug_ms = 0;
     if (now_ms - last_debug_ms > 1000) {
         last_debug_ms = now_ms;
-        
         // 发送倾转PID控制数据到上位机（MAVLink NAMED_VALUE_FLOAT）
         gcs().send_named_float("TS_TGT", current_tilt_angle);
-        gcs().send_named_float("TS_MPU", mpu6050_angle_roll);
-        gcs().send_named_float("TS_ERR", angle_error);
-        gcs().send_named_float("TS_CUR", norm_current_output);
-        gcs().send_named_float("TS_PID1", pid_correction);
-        gcs().send_named_float("TS_OUT", final_output);
-        
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
-                    "Tilt Tgt:%.1f MPU:%.1f Err:%.1f",
-                    (double)current_tilt_angle,
-                    (double)mpu6050_angle_roll,
-                    (double)angle_error);
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
-                    "Tilt CurOut:%d Norm:%.3f PID:%.3f Out:%.3f",
-                    current_output,
-                    (double)norm_current_output,
-                    (double)pid_correction,
-                    (double)final_output);
     }
     
     // 将倾转输出转换为舵机信号 (0-1000)
@@ -1358,159 +1377,36 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     }
     bicopter_last_update_ms = now_ms;
     
-    // ========== 速度控制（新增） ==========
-    // 外环：速度控制 (Velocity Error → Pitch Angle Command)
-    
-    // 1. 获取遥控器通道2输入（俯仰摇杆）
-    float rc_pitch_input = 0.0f;
-    // 获取通道2的归一化输入 [-1, 1]
-    rc_pitch_input = plane.channel_pitch->norm_input();
-    
-    // 添加死区，避免摇杆中位抖动
-    if (fabsf(rc_pitch_input) < 0.05f) {
-        rc_pitch_input = 0.0f;
-    }
-
-    // 2. 计算期望速度 (m/s)
-    // 遥控器中位时期望速度为0，前推/后拉时按比例增加期望速度
-    float desired_velocity_mps = rc_pitch_input * bicopter_max_vel_mps;
-    log_desired_velocity = desired_velocity_mps;
-    
-    // 3. 获取当前前后速度（通过加速度积分）
-    static float integrated_velocity_mps = 0.0f;  // 积分速度
-    static uint32_t last_accel_update_ms = 0;
-    static uint32_t last_velocity_reset_ms = 0;  // 上次速度重置时间
-    
-    float current_velocity_mps = 0.0f;
-    bool velocity_valid = false;
-    
-    // 每隔3秒重置积分速度，防止漂移累积
-    if (now_ms - last_velocity_reset_ms >= 3000) {
-        integrated_velocity_mps = 0.0f;
-        last_velocity_reset_ms = now_ms;
-    }
-    
-    // 获取机体坐标系加速度
-    Vector3f accel_body = plane.ins.get_accel();  // m/s²
-    
-    // 计算加速度积分时间间隔
-    float accel_dt_s = dt_s;
-    if (last_accel_update_ms != 0) {
-        accel_dt_s = (now_ms - last_accel_update_ms) * 0.001f;
-        if (accel_dt_s > 0.1f || accel_dt_s <= 0.0f) {
-            accel_dt_s = dt_s;  // 使用默认值
-        }
-    }
-
-    last_accel_update_ms = now_ms;
-    
-    // 补偿重力加速度（将加速度转换到世界坐标系，去除重力，再转回机体坐标系）
-    // 获取姿态旋转矩阵
-    const Matrix3f &rot_body_to_ned = plane.ahrs.get_rotation_body_to_ned();
-    
-    // 将机体加速度转换到NED坐标系
-    Vector3f accel_ned = rot_body_to_ned * accel_body;
-    
-    // 去除重力加速度（NED坐标系中，重力在Z轴负方向）
-    accel_ned.z += GRAVITY_MSS;  // GRAVITY_MSS ≈ 9.80665 m/s²
-    
-    // 转回机体坐标系
-    Vector3f accel_body_corrected = rot_body_to_ned.transposed() * accel_ned;
-    
-    // 提取前向加速度（机体X轴）
-    float forward_accel_mps2 = accel_body_corrected.x;
-    
-    // 速度积分
-    integrated_velocity_mps += forward_accel_mps2 * accel_dt_s;
-    
-    // 添加衰减因子，防止积分漂移（可选）
-    // const float decay_factor = 0.98f;  // 每次更新衰减2%
-    // integrated_velocity_mps *= decay_factor;
-    
-    current_velocity_mps = integrated_velocity_mps;
-    velocity_valid = true;
-    
-
-    // 
-    log_current_velocity = current_velocity_mps;
-    
-    // 4. 速度环PID计算
-    float velocity_pitch_cmd = 0.0f;  // 速度控制输出的俯仰角指令
-    
-    if (velocity_valid) {
-        float velocity_error = current_velocity_mps - desired_velocity_mps;
-        log_velocity_error = velocity_error;
-        // P项
-        float vel_p = bicopter_vel_p * velocity_error;
-        // I项（带抗饱和）
-        bicopter_vel_integral += velocity_error * dt_s;
-        bicopter_vel_integral = constrain_float(bicopter_vel_integral, 
-                                               -bicopter_vel_imax, 
-                                               bicopter_vel_imax);
-        
-        // 小速度误差时衰减积分
-        if (fabsf(velocity_error) < 0.1f) {
-            bicopter_vel_integral *= 0.95f;
-        } else if (fabsf(velocity_error) < 0.2f) {
-            bicopter_vel_integral *= 0.98f;
-        }
-        
-        float vel_i = bicopter_vel_i * bicopter_vel_integral;
-        
-        // D项
-        float vel_d_input = (velocity_error - bicopter_last_vel_error) / dt_s;
-        bicopter_last_vel_error = velocity_error;
-        float vel_d = bicopter_vel_d * vel_d_input;
-        
-        // 5. 速度PID输出 → 期望俯仰角（度）
-        velocity_pitch_cmd = vel_p + vel_i + vel_d;
-        velocity_pitch_cmd = constrain_float(velocity_pitch_cmd, 
-                                            -bicopter_max_vel_pitch_deg, 
-                                            bicopter_max_vel_pitch_deg);
-    } else {
-        // 速度无效时，清空积分项
-        bicopter_vel_integral = 0.0f;
-        bicopter_last_vel_error = 0.0f;
-        log_velocity_error = 0.0f;
-    }
-    
-    log_velocity_pitch_cmd = velocity_pitch_cmd;
-    
-    // 6. 将速度控制输出归一化为前馈量 [-1, 1]
-    // 速度控制输出的俯仰角 → 归一化前馈
-    float velocity_feedforward = velocity_pitch_cmd / bicopter_max_vel_pitch_deg;
-    velocity_feedforward = constrain_float(velocity_feedforward, -1.0f, 1.0f);
-    
-    // 7. 低通滤波平滑前馈输出，降低灵敏度
-    // 滤波系数：0.1 = 较慢响应，0.5 = 中等响应，0.9 = 快速响应
-    // const float filter_alpha = 0.3f;  // 可调整：0.1-0.5之间
-    // bicopter_vel_feedforward_filtered = bicopter_vel_feedforward_filtered * (1.0f - filter_alpha) +  velocity_feedforward * filter_alpha;
-    // velocity_feedforward = bicopter_vel_feedforward_filtered;
-    velocity_feedforward = velocity_feedforward * 0.25f;
     // ========== 俯仰控制 ==========
     // 外环：俯仰角度控制 (Pitch Angle → Desired Pitch Rate)
-    
     // 1. 获取当前俯仰角度和目标角度
     float current_pitch_deg = plane.ahrs.pitch_sensor * 0.01f;  // centidegrees → degrees
     float target_pitch_deg_raw = plane.nav_pitch_cd * 0.01f;    // 使用原始导航指令（保持悬停）
     
+    target_pitch_deg_raw = target_pitch_deg_raw;
     // 获取最大角度限制
     float angle_max = plane.quadplane.aparm.angle_max * 0.01;  // centidegrees → degrees
-    
     // 限制目标角度在 ±angle_max 范围内
     float target_pitch_change = target_pitch_deg_raw;
     float feedforward_output = 0.0f;
     
+    
+    
     // 如果目标改变超过阈值，计算前馈
-    if (fabsf(target_pitch_change) > 0.1f) {
+    if (fabsf(target_tilt_angle)< 25 && fabsf(target_pitch_change) > 0.1f) {
         // 前馈增益：目标变化直接映射到舵机输出
         // 使用 angle_max 作为归一化基准
         feedforward_output = target_pitch_change / angle_max;
         feedforward_output = constrain_float(feedforward_output, -1.0f, 1.0f);
     }
     
-    // 2. 计算俯仰角度误差
-    pitch_angle_error = target_pitch_deg_raw - current_pitch_deg;
+    if (fabsf(target_tilt_angle) < 30) {
+        // 2. 计算俯仰角度误差
+        pitch_angle_error = target_pitch_deg_raw - current_pitch_deg;
+    } else {
+        pitch_angle_error = 0 - current_pitch_deg;
+    }
+
     
     // 3. 俯仰角度环PID计算
     float pitch_angle_p = bicopter_pitch_angle_p * pitch_angle_error;
@@ -1527,12 +1423,12 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     float pitch_angle_d = bicopter_pitch_angle_d * pitch_angle_d_input;
     
     // 4. 计算期望俯仰角速度（外环输出）
-    desired_pitch_rate = pitch_angle_p + pitch_angle_i + pitch_angle_d;
-    desired_pitch_rate = constrain_float(desired_pitch_rate, 
-                                        -bicopter_max_rate_dps, 
-                                        bicopter_max_rate_dps);
-    
-    float extra_elevator = desired_pitch_rate;
+    float pitch_angle_diff = pitch_angle_p + pitch_angle_i + pitch_angle_d;
+    pitch_angle_diff = constrain_float(pitch_angle_diff, 
+                                        -1.0f, 
+                                        1.0f);
+
+    float extra_elevator = 0;
     
     // 内环：俯仰角速度控制 (Pitch Rate Error → Motor Differential)
     float current_pitch_rate = plane.ahrs.get_gyro().y * RAD_TO_DEG;  // rad/s → deg/s
@@ -1565,6 +1461,7 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     // 6. 计算俯仰电机差分输出（内环输出）
     pitch_differential = pitch_rate_p + pitch_rate_i + pitch_rate_d;
     pitch_differential = constrain_float(pitch_differential, -1.0f, 1.0f);
+    pitch_differential = pitch_angle_diff * angle_k + pitch_differential * (1.0f - angle_k);
 
     log_pitch_rate_error = pitch_rate_error / MAX((float)bicopter_max_rate_dps, 1.0f); // [-1, 1]
     log_pitch_rate_p     = pitch_rate_p;                                                // 原始P分量
@@ -1640,24 +1537,22 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     float feedforward_diff = feedforward_sign * feedforward_output * pitch_range * (angle_max / 30.0f);
     pitch_diff += feedforward_diff;
     
-    // 添加速度控制前馈到俯仰差分
-    // float velocity_feedforward_diff = velocity_pitch_sign * velocity_feedforward;
-    // pitch_diff += velocity_feedforward_diff;
-    
     if (pitch_diff > bicopter_max_motor_diff) {
         pitch_diff = bicopter_max_motor_diff;
     } else if (pitch_diff < -bicopter_max_motor_diff) {
         pitch_diff = -bicopter_max_motor_diff;
     }
-
        
     // 计算偏航差分
     float yaw_diff = (yaw_differential / 2.0f) * pitch_range;
-    
+
+
     float left_tilt = base_output + left_pitch_sign * pitch_diff - left_yaw_sign * yaw_diff;
     float right_tilt = base_output + right_pitch_sign * pitch_diff + right_yaw_sign * yaw_diff;
-    
 
+    if (plane.control_mode == &plane.mode_fbwa) {
+        left_tilt = base_output;
+    }
     current_tilt = left_tilt;
 
     // 限制输出范围并转换为舵机信号 (0-1000)
@@ -1679,59 +1574,35 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
 */
 void Tiltrotor::bicopter_update()
 {
-    // 使用 遥控器通道8 重新校准MPU6050
-    static bool calibration_done = false;  // 校准完成标识
-    bool ch8_high = (RC_Channels::get_radio_in(7) > 1800);  // Channel 8 (index 7)
-    
-    if (!ch8_high) {
-        // CH8低位：重置校准标识，允许下次校准
-        calibration_done = false;
-    } else if (ch8_high && !calibration_done) {
-        // CH8高位且未校准：执行校准（只执行一次）
-        plane.mpu6050_recalibrate();
-        calibration_done = true;  // 标记已校准
-    }
-
     // 获取通道12状态
-    int ch12_value = RC_Channels::get_radio_in(11); // Channel 12 (index 11)
-    bool ch12_high = (ch12_value > 1500);
+
+    // 通道12高位：使用通道2动态控制目标角度
+    const uint32_t now_ms = AP_HAL::millis();
     
-    // target_tilt_angle 现在是成员变量，不需要每次重置为0
-    
-    if (ch12_high) {
-        // 通道12高位：使用通道2动态控制目标角度
-        const uint32_t now_ms = AP_HAL::millis();
-        
-        // 计算时间间隔
-        float dt_s = 0.02f;  // 默认50Hz
-        if (last_tilt_angle_update_ms != 0) {
-            dt_s = (now_ms - last_tilt_angle_update_ms) * 0.001f;
-            if (dt_s > 1.0f || dt_s <= 0.0f) {
-                dt_s = 0.02f;
-            }
+    // 计算时间间隔
+    float dt_s = 0.02f;  // 默认50Hz
+    if (last_tilt_angle_update_ms != 0) {
+        dt_s = (now_ms - last_tilt_angle_update_ms) * 0.001f;
+        if (dt_s > 1.0f || dt_s <= 0.0f) {
+            dt_s = 0.02f;
         }
-        last_tilt_angle_update_ms = now_ms;
-        
-        // 获取通道16输入
-        float ch16_input = 0.0f;
-        RC_Channel *ch16 = RC_Channels::rc_channel(14);  // Channel 16 (index 15)
-        if (ch16 != nullptr) {
-            ch16_input = ch16->norm_input();  // [-1, 1]
-            // 映射到 [0, 1] 范围
-            ch16_input = (ch16_input + 1.0f) * 0.5f;  // [-1,1] → [0,1]
-        }
-        
-        // 直接映射目标角度
-        // 通道16 = 0 → 0°
-        // 通道16 = 0.5 → 2.5°
-        // 通道16 = 1 → 5°
-        manual_target_tilt_angle = ch16_input * 5.0f;  // [0,1] → [0°,5°]
-        
-        // 限制在0-5度范围
-        manual_target_tilt_angle = constrain_float(manual_target_tilt_angle, 0.0f, 5.0f);
-        
-        target_tilt_angle = manual_target_tilt_angle;
     }
+    last_tilt_angle_update_ms = now_ms;
+    
+    // 获取通道16输入
+    float ch16_input = 0.0f;
+    RC_Channel *ch16 = RC_Channels::rc_channel(14);  // Channel 16 (index 15)
+    if (ch16 != nullptr) {
+        ch16_input = ch16->norm_input();  // [-1, 1]
+    }
+    
+    // 直接映射目标角度
+    manual_target_tilt_angle = ch16_input * tilt_angle_scale;
+    
+    // 限制在合理范围（-90° 到 +90°）
+    manual_target_tilt_angle = constrain_float(manual_target_tilt_angle, -tilt_angle_scale, tilt_angle_scale);
+    
+    target_tilt_angle = manual_target_tilt_angle;
     
     // 保存目标角度到全局变量（度 → centidegrees）
     plane.tilt_angle_cd = target_tilt_angle * 100.0f;
@@ -1742,7 +1613,10 @@ void Tiltrotor::bicopter_update()
     const float zero_out = tilt_yaw_angle / total_angle;
 
     // calculate the basic tilt amount from current_tilt
-    float base_output = zero_out;
+    float base_output = zero_out + angle_revise;
+    float target_out = target_tilt_angle / total_angle;
+
+    base_output = base_output + target_out;
 
     if (!quadplane.in_vtol_mode() && (!plane.arming.is_armed_and_safety_off() || !quadplane.assisted_flight)) {
         // option set then if disarmed move to VTOL position to prevent ground strikes, allow tilt forward in manual mode for testing
@@ -1754,7 +1628,9 @@ void Tiltrotor::bicopter_update()
     if (!quadplane.assisted_flight &&
                (plane.control_mode == &plane.mode_qacro ||
                plane.control_mode == &plane.mode_qstabilize ||
-               plane.control_mode == &plane.mode_qhover))
+               plane.control_mode == &plane.mode_qhover ||
+               plane.control_mode == &plane.mode_fbwa
+            ))
     {
         // 使用通道10切换控制模式
         int ch10_value = RC_Channels::get_radio_in(9); // Channel 10 (index 9)
@@ -1773,8 +1649,6 @@ void Tiltrotor::bicopter_update()
             // transition_pid_get_rate();
             transition_get_rate(zero_out, pitch_angle_error, pitch_differential, left_motor_output);
         } else {
-            target_tilt_angle = 0.0f;
-            manual_target_tilt_angle = 0.0f;
             // 低位：使用默认的VTOL PID控制
             vtol_pid_get_rate(adjusted_base_output, zero_out, 
                             pitch_differential, yaw_differential,
@@ -1798,55 +1672,53 @@ void Tiltrotor::bicopter_update()
         log_right_motor_output = right_motor_output  / 1000.0f;        // [0, 1]
         log_pitch_rate_integral = log_pitch_rate_integral / MAX((float)bicopter_pitch_rate_imax, 1e-3f); // [-1, 1]
 
-        const uint32_t now_ms = AP_HAL::millis();
-                
         // ========== 调试输出（50Hz，TILT_VOFA_EN=1时启用） ==========
         if (vofa_enable) {
-        static uint32_t last_debug_ms = 0;
-        if (now_ms - last_debug_ms > 20) {
-            last_debug_ms = now_ms;
-            const struct { const char *name; float value; } log_fields[] = {
-                {"LOG_VEL_E",  log_velocity_error},        // 速度误差 (m/s)
-                {"LOG_VEL_C",  log_current_velocity},      // 当前速度 (m/s)
-                {"LOG_VEL_D",  log_desired_velocity},      // 期望速度 (m/s)
-                {"LOG_VEL_P",  log_velocity_pitch_cmd},    // 速度输出俯仰角 (deg)
-                {"LOG_PAE",  log_pitch_angle_error},       // 俯仰角度误差
-                {"LOG_PDR",  log_pitch_desired_rate},      // 期望俯仰角速度
-                {"LOG_PRE",  log_pitch_rate_error},        // 俯仰角速度误差
-                {"LOG_PRP",  log_pitch_rate_p},            // 俯仰角速度P项
-                {"LOG_PRI", log_pitch_rate_integral},      // 俯仰角速度积分
-                {"LOG_PD",  log_pitch_differential},       // 俯仰差分输出
-                {"LOG_YAE",  log_yaw_angle_error},         // 偏航角度误差
-                {"LOG_YDR",  log_yaw_desired_rate},        // 期望偏航角速度
-                {"LOG_YD",   log_yaw_differential},        // 偏航差分输出
-                {"LOG_LM",   log_left_motor_output},       // 左电机输出
-                {"LOG_RM",   log_right_motor_output},      // 右电机输出
-            };
-            for (const auto &f : log_fields) {
-                gcs().send_named_float(f.name, f.value);
+            static uint32_t last_debug_ms = 0;
+            if (now_ms - last_debug_ms > 20) {
+                last_debug_ms = now_ms;
+                const struct { const char *name; float value; } log_fields[] = {
+                    {"LOG_VEL_E",  log_velocity_error},        // 速度误差 (m/s)
+                    {"LOG_VEL_C",  log_current_velocity},      // 当前速度 (m/s)
+                    {"LOG_VEL_D",  log_desired_velocity},      // 期望速度 (m/s)
+                    {"LOG_VEL_P",  log_velocity_pitch_cmd},    // 速度输出俯仰角 (deg)
+                    {"LOG_PAE",  log_pitch_angle_error},       // 俯仰角度误差
+                    {"LOG_PDR",  log_pitch_desired_rate},      // 期望俯仰角速度
+                    {"LOG_PRE",  log_pitch_rate_error},        // 俯仰角速度误差
+                    {"LOG_PRP",  log_pitch_rate_p},            // 俯仰角速度P项
+                    {"LOG_PRI", log_pitch_rate_integral},      // 俯仰角速度积分
+                    {"LOG_PD",  log_pitch_differential},       // 俯仰差分输出
+                    {"LOG_YAE",  log_yaw_angle_error},         // 偏航角度误差
+                    {"LOG_YDR",  log_yaw_desired_rate},        // 期望偏航角速度
+                    {"LOG_YD",   log_yaw_differential},        // 偏航差分输出
+                    {"LOG_LM",   log_left_motor_output},       // 左电机输出
+                    {"LOG_RM",   log_right_motor_output},      // 右电机输出
+                    {"LOG_TILT", target_tilt_angle},           // 目标倾转角度
+                };
+                for (const auto &f : log_fields) {
+                    gcs().send_named_float(f.name, f.value);
+                }
             }
-        }
 
-        static uint32_t last_text_ms = 0;
-        if (now_ms - last_text_ms > 1000) {
-            last_text_ms = now_ms;
-            GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
-                        "Bi b:%.2f adj:%.2f PE:%.1f PD:%.1f L:%.0f R:%.0f",
-                        (double)base_output,
-                        (double)adjusted_base_output,
-                        (double)pitch_angle_error,
-                        (double)pitch_differential,
-                        (double)left_motor_output,
-                        (double)right_motor_output);
-        }
+            static uint32_t last_text_ms = 0;
+            if (now_ms - last_text_ms > 1000) {
+                last_text_ms = now_ms;
+                GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
+                            "Bi angle_k:%.2f adj:%.2f PE:%.1f PD:%.1f L:%.0f R:%.0f",
+                            (double)angle_k,
+                            (double)adjusted_base_output,
+                            (double)pitch_angle_error,
+                            (double)pitch_differential,
+                            (double)left_motor_output,
+                            (double)right_motor_output);
+            }
         } // vofa_enable
         return;
     }
     
     if
     (
-        quadplane.assisted_flight &&
-        transition->transition_state >= Tiltrotor_Transition::TRANSITION_TIMER
+        quadplane.assisted_flight && transition->transition_state >= Tiltrotor_Transition::TRANSITION_TIMER
     ) 
     {
         // slew(get_forward_flight_tilt());
@@ -1855,8 +1727,8 @@ void Tiltrotor::bicopter_update()
         // Q_TILT_MAX. Anything above 50% throttle gets
         // Q_TILT_MAX. Below 50% throttle we decrease linearly. This
         // relies heavily on Q_VFWD_GAIN being set appropriately.
-    //    float settilt = constrain_float((SRV_Channels::get_output_scaled(SRV_Channel::k_throttle)-MAX(plane.aparm.throttle_min.get(),0)) * 0.02, 0, 1);
-    //    slew(MIN(settilt * max_angle_deg * (1/90.0), get_forward_flight_tilt())); 
+        // float settilt = constrain_float((SRV_Channels::get_output_scaled(SRV_Channel::k_throttle)-MAX(plane.aparm.throttle_min.get(),0)) * 0.02, 0, 1);
+        // slew(MIN(settilt * max_angle_deg * (1/90.0), get_forward_flight_tilt())); 
     }
 }
 

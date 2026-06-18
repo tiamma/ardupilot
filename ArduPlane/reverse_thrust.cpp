@@ -125,20 +125,21 @@ bool Plane::have_reverse_thrust(void) const
  */
 float Plane::get_throttle_input(bool no_deadzone) const
 {
-    if (!rc().has_valid_input()) {
-        // Return 0 if there is no valid input
-        return 0.0;
-    }
-    float ret;
-    if (no_deadzone) {
-        ret = channel_throttle->get_control_in_zero_dz();
-    } else {
-        ret = channel_throttle->get_control_in();
-    }
-    if (reversed_throttle) {
-        // RC option for reverse throttle has been set
-        ret = -ret;
-    }
+    // if (!rc().has_valid_input()) {
+    //     // Return 0 if there is no valid input
+    //     return 0.0;
+    // }
+    // float ret;
+    // if (no_deadzone) {
+    //     ret = channel_throttle->get_control_in_zero_dz();
+    // } else {
+    //     ret = channel_throttle->get_control_in();
+    // }
+    // if (reversed_throttle) {
+    //     // RC option for reverse throttle has been set
+    //     ret = -ret;
+    // }
+    float ret = channel_throttle->get_control_in_zero_dz();
     return ret;
 }
 
@@ -147,18 +148,20 @@ float Plane::get_throttle_input(bool no_deadzone) const
  */
 float Plane::get_adjusted_throttle_input(bool no_deadzone) const
 {
-    if (!rc().has_valid_input()) {
-        // Return 0 if there is no valid input
-        return 0.0;
-    }
-    if ((plane.channel_throttle->get_type() != RC_Channel::ControlType::RANGE) ||
-        (flight_option_enabled(FlightOptions::CENTER_THROTTLE_TRIM)) == 0) {
-       return  get_throttle_input(no_deadzone);
-    }
-    float ret = channel_throttle->get_range() * throttle_curve(aparm.throttle_cruise * 0.01, 0, 0.5 + 0.5*channel_throttle->norm_input());
-    if (reversed_throttle) {
-        // RC option for reverse throttle has been set
-        return -ret;
-    }
-    return ret;
+    // if (!rc().has_valid_input()) {
+    //     // Return 0 if there is no valid input
+    //     return 0.0;
+    // }
+    // if ((plane.channel_throttle->get_type() != RC_Channel::ControlType::RANGE) ||
+    //     (flight_option_enabled(FlightOptions::CENTER_THROTTLE_TRIM)) == 0) {
+    //    return  get_throttle_input(no_deadzone);
+    // }
+    // float ret = channel_throttle->get_range() * throttle_curve(aparm.throttle_cruise * 0.01, 0, 0.5 + 0.5*channel_throttle->norm_input());
+    // if (reversed_throttle) {
+    //     // RC option for reverse throttle has been set
+    //     return -ret;
+    // }
+    // return ret;
+
+    return  get_throttle_input(no_deadzone);
 }

@@ -396,9 +396,11 @@ void Plane::stabilize_vtol_yaw(float yaw_error_cd_D)
 
 /*
     VTOL偏航角速度控制 - 直接控制角速度，无角度环
-    参数: desired_yaw_rate_dps - 期望偏航角速度（deg/s）
+    参数: 
+      desired_yaw_rate_dps - 期望偏航角速度（deg/s）
+      scaling - 输出缩放系数（默认1.0），用于根据倾转角度调整控制幅度
 */
-void Plane::stabilize_vtol_yaw_rate(float desired_yaw_rate_dps)
+void Plane::stabilize_vtol_yaw_rate(float desired_yaw_rate_dps, float scaling)
 {
     // ========== 角速度PID控制（无外环） ==========
     // 1. 读取当前偏航角速度（rad/s → deg/s）
@@ -411,7 +413,6 @@ void Plane::stabilize_vtol_yaw_rate(float desired_yaw_rate_dps)
     static float yaw_rate_integral = 0.0f;
     static float last_yaw_rate_error = 0.0f;
     static uint32_t last_update_ms = 0;
-    // static uint32_t last_debug_ms = 0;
     
     // 4. 计算时间间隔
     uint32_t now_ms = AP_HAL::millis();
@@ -445,10 +446,13 @@ void Plane::stabilize_vtol_yaw_rate(float desired_yaw_rate_dps)
     const float max_output = 100.0f;  // 最大输出值
     float normalized_output = constrain_float(pid_output / max_output, -1.0f, 1.0f);
     
-    // 11. 输出到副翼（SERVO_MAX = 4500）
-    float ail_out = -normalized_output * (float)SERVO_MAX;
+    // 11. 应用缩放系数（根据倾转角度调整）
+    normalized_output *= scaling;
     
-    // 12. 输出到副翼通道
+    // 12. 输出到副翼（SERVO_MAX = 4500）
+    float ail_out = -normalized_output * (float)SERVO_MAX;
+
+    // 13. 输出到副翼通道
     SRV_Channels::set_output_scaled(SRV_Channel::k_aileron, ail_out);
 }
 

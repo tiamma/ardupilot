@@ -10,28 +10,17 @@ bool ModeQHover::_enter()
     pos_control->set_correction_speed_accel_z(-quadplane.get_pilot_velocity_z_max_dn(), quadplane.pilot_speed_z_max_up*100, quadplane.pilot_accel_z*100);
     quadplane.set_climb_rate_cms(0);
     quadplane.init_throttle_wait();
-    yaw_aileron_active = false;
-    yaw_angle_offset_deg = plane.ahrs.yaw_sensor * 0.01f;
     return true;
 }
 
 void ModeQHover::update()
 {
     float tilt_angle_deg = plane.tilt_angle_cd * 0.01f;
-    if (tilt_angle_deg < 30.0f) {
+    if (tilt_angle_deg <= 30.0f) {
         plane.mode_qstabilize.update();
     }
     if (tilt_angle_deg > 30.0f) {
         plane.mode_fbwa.update();
-        // 检测通道12状态
-        // int ch12_value = RC_Channels::get_radio_in(11); // Channel 12 (index 11)
-        // bool ch12_high = (ch12_value > 1500);
-
-        // // 检查CH12状态决定俯仰控制
-        // if (ch12_high) {
-        //     // CH12高位：锁定nav_pitch_cd = 5度
-        //     plane.nav_pitch_cd = 800;  // 5度 × 100 = 500 centidegrees
-        // }
     }
 }
 
@@ -61,45 +50,16 @@ void ModeQHover::run()
         plane.nav_pitch_cd = constrain_int32(plane.nav_pitch_cd, 
                                                 plane.pitch_limit_min * 100, 
                                                 plane.aparm.pitch_limit_max.get() * 100);
-        // 检测通道12状态
-        // int ch12_value = RC_Channels::get_radio_in(11); // Channel 12 (index 11)
-        // bool ch12_high = (ch12_value > 1500);
-
-        // 检查CH12状态决定俯仰控制
-        // if (ch12_high) {
-        //     // CH12高位：锁定nav_pitch_cd = 5度
-        //     plane.nav_pitch_cd = 800;  // 5度 × 100 = 500 centidegrees
-        // }
-        
         // Run base class function and then output throttle
         Mode::run();
-        output_pilot_throttle();
-        plane.quadplane.assign_tilt_to_fwd_thr();
-        quadplane.hold_hover(quadplane.get_pilot_desired_climb_rate_cms());
-
+        
+        const float throttle = plane.get_throttle_input(true);
+        SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
     } else {
         // ========== 原有VTOL悬停控制 ==========
         const float rudder_input = (float)plane.channel_rudder->get_control_in() / plane.channel_rudder->get_range();
-        
         // 检测通道7，用于重置偏航角基准
-        int16_t ch7_value = 0;
-        RC_Channel *ch7 = RC_Channels::rc_channel(6);  // 通道7 (索引从0开始，所以是6)
-        if (ch7 != nullptr) {
-            ch7_value = ch7->get_radio_in();
-            // 如果通道7 > 1700 (高位)，重置偏航角基准
-            if (ch7_value > 1700) {
-                yaw_angle_offset_deg = plane.ahrs.yaw_sensor * 0.01f;
-            }
-        }
-
         quadplane.assist.check_VTOL_recovery();
-
-        const uint32_t now = AP_HAL::millis();
-        if (quadplane.tailsitter.in_vtol_transition(now)) {
-            // Tailsitters in FW pull up phase of VTOL transition run FW controllers
-            Mode::run();
-            return;
-        }
 
         if (quadplane.throttle_wait) {
             quadplane.set_desired_spool_state(AP_Motors::DesiredSpoolState::GROUND_IDLE);
@@ -111,16 +71,18 @@ void ModeQHover::run()
             quadplane.hold_hover(quadplane.get_pilot_desired_climb_rate_cms());
         }
 
-        
         // Stabilize with fixed wing surfaces
         // plane.stabilize_roll();
         // plane.stabilize_pitch();
         
-            // 方向舵摇杆 → 期望偏航速率（deg/s）
-        // get_rate() 返回的就是 deg/s，不需要除以100
         const float desired_yaw_rate_dps = rudder_input * plane.g2.vtol_yaw_input_rate;
         // 使用纯角速度控制（无角度环）
-        plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps);
+        // 根据倾转角度计算缩放系数：0°时=1.0，30°时=0.0
+        // 线性映射：scaling = 1.0 - (tilt_angle / 30.0)
+        const float max_tilt_for_yaw = 30.0f;  // 最大有效倾转角度
+        const float scaling = constrain_float(1.0f - (tilt_angle_deg / max_tilt_for_yaw), 0.0f, 1.0f);
+
+        plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps, scaling);
         // Center rudder
         output_rudder_and_steering(0.0);
         // possibly apply spin recovery
