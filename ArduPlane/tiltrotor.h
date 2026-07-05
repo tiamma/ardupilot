@@ -195,6 +195,7 @@ private:
         float yaw_differential;       // 偏航差分输出 (-1 to 1)
         float left_motor_output;      // 左电机输出 (0-1000)
         float right_motor_output;     // 右电机输出 (0-1000)
+        float gyro_y_raw;             // 陀螺仪Y轴原始值 (rad/s)
     };
 
     bool setup_complete;
@@ -251,6 +252,7 @@ private:
     float log_current_velocity;           // 当前速度
     float log_desired_velocity;           // 期望速度
     float log_velocity_pitch_cmd;         // 速度控制输出的俯仰角指令
+    float log_gyro_y_raw;                 // 陀螺仪Y轴原始值
     
     // 双旋翼控制函数
     void bicopter_update();

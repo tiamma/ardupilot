@@ -2028,15 +2028,15 @@ void QuadPlane::motors_output(bool run_rate_controller)
     }
 
     // 输出 run_rate_controller 在 GCS（每秒一次）
-    static uint32_t last_debug_ms = 0;
-    if (now - last_debug_ms >= 1000) {
-        last_debug_ms = now;
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
-                     "RateCtrl: %d throttle: %.2f active: %d", 
-                     run_rate_controller,
-                     (double)motors->get_throttle(),
-                     tiltrotor.motors_active());
-    }
+    // static uint32_t last_debug_ms = 0;
+    // if (now - last_debug_ms >= 1000) {
+    //     last_debug_ms = now;
+    //     GCS_SEND_TEXT(MAV_SEVERITY_INFO, 
+    //                  "RateCtrl: %d throttle: %.2f active: %d", 
+    //                  run_rate_controller,
+    //                  (double)motors->get_throttle(),
+    //                  tiltrotor.motors_active());
+    // }
 }
 
 /*
@@ -4402,22 +4402,22 @@ void QuadPlane::set_desired_spool_state(AP_Motors::DesiredSpoolState state)
 {
     if (motors->get_desired_spool_state() != state) {
         // 输出状态变化到GCS
-        const char* state_name;
-        switch (state) {
-            case AP_Motors::DesiredSpoolState::SHUT_DOWN:
-                state_name = "SHUT_DOWN";
-                break;
-            case AP_Motors::DesiredSpoolState::GROUND_IDLE:
-                state_name = "GROUND_IDLE";
-                break;
-            case AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED:
-                state_name = "THROTTLE_UNLIMITED";
-                break;
-            default:
-                state_name = "UNKNOWN";
-                break;
-        }
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Spool state: %s", state_name);
+        // const char* state_name;
+        // switch (state) {
+        //     case AP_Motors::DesiredSpoolState::SHUT_DOWN:
+        //         state_name = "SHUT_DOWN";
+        //         break;
+        //     case AP_Motors::DesiredSpoolState::GROUND_IDLE:
+        //         state_name = "GROUND_IDLE";
+        //         break;
+        //     case AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED:
+        //         state_name = "THROTTLE_UNLIMITED";
+        //         break;
+        //     default:
+        //         state_name = "UNKNOWN";
+        //         break;
+        // }
+        // GCS_SEND_TEXT(MAV_SEVERITY_INFO, "Spool state: %s", state_name);
         
         if (state == AP_Motors::DesiredSpoolState::SHUT_DOWN) {
             // also request zero throttle, so we avoid the slow ramp down

@@ -803,6 +803,7 @@ void Tiltrotor::write_log()
             yaw_differential     : log_yaw_differential,
             left_motor_output    : log_left_motor_output,
             right_motor_output   : log_right_motor_output,
+            gyro_y_raw           : log_gyro_y_raw,
         };
         plane.logger.WriteBlock(&pkt, sizeof(pkt));
         return;
@@ -1431,7 +1432,9 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     float extra_elevator = 0;
     
     // 内环：俯仰角速度控制 (Pitch Rate Error → Motor Differential)
-    float current_pitch_rate = plane.ahrs.get_gyro().y * RAD_TO_DEG;  // rad/s → deg/s
+    const Vector3f &gyro = plane.ahrs.get_gyro();
+    log_gyro_y_raw = gyro.y;  // rad/s
+    float current_pitch_rate = gyro.y * RAD_TO_DEG;  // rad/s → deg/s
     float pitch_rate_error = extra_elevator - current_pitch_rate;
     
     // 5. 俯仰角速度环PID计算
@@ -1548,7 +1551,7 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
 
 
     float left_tilt = base_output + left_pitch_sign * pitch_diff - left_yaw_sign * yaw_diff;
-    float right_tilt = base_output + right_pitch_sign * pitch_diff + right_yaw_sign * yaw_diff;
+    // float right_tilt = base_output + right_pitch_sign * pitch_diff + right_yaw_sign * yaw_diff;
 
     if (plane.control_mode == &plane.mode_fbwa) {
         left_tilt = base_output;
@@ -1557,12 +1560,12 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
 
     // 限制输出范围并转换为舵机信号 (0-1000)
     left_motor_output = 1000 * constrain_float(left_tilt, 0.0, 1.0);
-    right_motor_output = 1000 * constrain_float(right_tilt, 0.0, 1.0);
+    // right_motor_output = 1000 * constrain_float(right_tilt, 0.0, 1.0);
     
     // 使用计数器交替更新电机：奇数更新左电机，偶数更新右电机
     // 奇数：更新左电机
     SRV_Channels::set_output_scaled(SRV_Channel::k_scripting1, left_motor_output);
-    SRV_Channels::set_output_scaled(SRV_Channel::k_scripting2, right_motor_output);
+    // SRV_Channels::set_output_scaled(SRV_Channel::k_scripting2, right_motor_output);
 }
 
 
@@ -1610,10 +1613,11 @@ void Tiltrotor::bicopter_update()
     // total angle the tilt can go through
     const float total_angle = 90 + tilt_yaw_angle;
     // output value (0 to 1) to get motors pointed straight up
-    const float zero_out = tilt_yaw_angle / total_angle;
+    float zero_out = tilt_yaw_angle / total_angle;
 
+    zero_out = zero_out + angle_revise;
     // calculate the basic tilt amount from current_tilt
-    float base_output = zero_out + angle_revise;
+    float base_output = zero_out;
     float target_out = target_tilt_angle / total_angle;
 
     base_output = base_output + target_out;

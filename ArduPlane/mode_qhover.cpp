@@ -16,14 +16,21 @@ bool ModeQHover::_enter()
 void ModeQHover::update()
 {
     float tilt_angle_deg = plane.tilt_angle_cd * 0.01f;
-    if (tilt_angle_deg <= 30.0f) {
-        plane.mode_qstabilize.update();
-    }
+
     if (tilt_angle_deg > 30.0f) {
         plane.mode_fbwa.update();
-    }
+    } else {
+        plane.mode_qstabilize.update();
+    }   
 }
 
+// bool ModeQHover::is_vtol_mode() {
+//     float tilt_angle_deg = plane.tilt_angle_cd * 0.01f;
+//     if (tilt_angle_deg <= 30.0f) {
+//         return true;
+//     }
+//     return false;
+// }
 /*
   control QHOVER mode
  */
@@ -32,7 +39,6 @@ void ModeQHover::run()
     // 获取当前倾转角度（centidegrees → degrees）
     float tilt_angle_deg = plane.tilt_angle_cd * 0.01f;
     
-    // 判断是否使用FBWA风格控制（倾转角度 > 30度）
     if (tilt_angle_deg > 30.0f) {
         // ========== FBWA风格控制 ==========
         // set nav_roll and nav_pitch using sticks
@@ -50,11 +56,11 @@ void ModeQHover::run()
         plane.nav_pitch_cd = constrain_int32(plane.nav_pitch_cd, 
                                                 plane.pitch_limit_min * 100, 
                                                 plane.aparm.pitch_limit_max.get() * 100);
-        // Run base class function and then output throttle
-        Mode::run();
         
         const float throttle = plane.get_throttle_input(true);
         SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
+        // Run base class function and then output throttle
+        Mode::run();
     } else {
         // ========== 原有VTOL悬停控制 ==========
         const float rudder_input = (float)plane.channel_rudder->get_control_in() / plane.channel_rudder->get_range();

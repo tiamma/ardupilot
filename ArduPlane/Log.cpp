@@ -454,9 +454,10 @@ const struct LogStructure Plane::log_structure[] = {
 // @Field: YDif: Yaw differential output (-1 to 1)
 // @Field: LOut: Left motor output (0-1000)
 // @Field: ROut: Right motor output (0-1000)
+// @Field: GyY: Gyro Y-axis raw value (rad/s)
 #if HAL_QUADPLANE_ENABLED
     { LOG_TILT_MSG, sizeof(Tiltrotor::log_tiltrotor),
-      "TILT", "Qffffffff",  "TimeUS,PErr,PDes,PDif,YErr,YDes,YDif,LOut,ROut", "sddnddn--", "F--------" , true },
+      "TILT", "Qffffffffff",  "TimeUS,PErr,PDes,PDif,YErr,YDes,YDif,LOut,ROut,GyY", "sddnddn--E", "F---------" , true },
 #endif
 
 // @LoggerMessage: PIDG

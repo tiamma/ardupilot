@@ -990,14 +990,13 @@ void Plane::servos_output(void)
 
     // support twin-engine aircraft
     servos_twin_engine_mix();
-
     // run vtail and elevon mixers
     channel_function_mixer(SRV_Channel::k_aileron, SRV_Channel::k_elevator, SRV_Channel::k_elevon_left, SRV_Channel::k_elevon_right);
     channel_function_mixer(SRV_Channel::k_rudder,  SRV_Channel::k_elevator, SRV_Channel::k_vtail_right, SRV_Channel::k_vtail_left);
 
 #if HAL_QUADPLANE_ENABLED
     // cope with tailsitters and bicopters
-    quadplane.tailsitter.output();
+    // quadplane.tailsitter.output();
     quadplane.tiltrotor.bicopter_output();
 #endif
 
