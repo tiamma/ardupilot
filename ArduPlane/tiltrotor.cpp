@@ -1566,6 +1566,160 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
 }
 
 
+
+// 垂直姿态飞行计算
+void Tiltrotor::vtol_pid_arcsin_rate(float base_output, float zero_out, 
+                                   float &pitch_differential, float &yaw_differential,
+                                   float &pitch_angle_error, float &desired_pitch_rate,
+                                   float &yaw_angle_error, float &desired_yaw_rate,
+                                   float &left_motor_output, float &right_motor_output)
+{
+    const uint32_t now_ms = AP_HAL::millis();
+    
+    // 计算时间间隔
+    float dt_s = 0.02f;  // 默认50Hz
+    if (bicopter_last_update_ms != 0) {
+        dt_s = (now_ms - bicopter_last_update_ms) * 0.001f;
+        if (dt_s > 1.0f || dt_s <= 0.0f) {
+            dt_s = 0.02f;
+        }
+    }
+    bicopter_last_update_ms = now_ms;
+    
+    // ========== 俯仰控制 ==========
+    // 外环：俯仰角度控制 (Pitch Angle → Desired Pitch Rate)
+    // 1. 获取当前俯仰角度和目标角度
+    float current_pitch_deg = plane.ahrs.pitch_sensor * 0.01f;  // centidegrees → degrees
+    float target_pitch_deg_raw = plane.nav_pitch_cd * 0.01f;    // 使用原始导航指令（保持悬停）
+    
+    target_pitch_deg_raw = target_pitch_deg_raw;
+    // 获取最大角度限制
+    float angle_max = plane.quadplane.aparm.angle_max * 0.01;  // centidegrees → degrees
+    // 限制目标角度在 ±angle_max 范围内
+    float target_pitch_change = target_pitch_deg_raw;
+    float feedforward_output = 0.0f;
+    
+    // 摇杆线性化：arcsin 反算目标倾转角，补偿 sin(b) 推力几何非线性
+    // u = target_pitch_change / angle_max  ∈ [-1, 1]
+    // sin_target = u * sin(angle_max_rad)  → arcsin → theta_rad
+    if (fabsf(target_tilt_angle) < 25 && fabsf(target_pitch_change) > 0.1f) {
+        float angle_max_rad = angle_max * DEG_TO_RAD;
+        float S_max = sinf(angle_max_rad);
+        
+        float u = target_pitch_change / angle_max;
+
+        u = constrain_float(u, -1.0f, 1.0f);
+        float sin_target = u * S_max;
+        float theta_rad = asinf(sin_target);
+        feedforward_output = theta_rad / angle_max_rad;
+        feedforward_output = constrain_float(feedforward_output, -1.0f, 1.0f);
+    }
+    
+    if (fabsf(target_tilt_angle) < 30) {
+        // 2. 计算俯仰角度误差
+        pitch_angle_error = target_pitch_deg_raw - current_pitch_deg;
+    } else {
+        pitch_angle_error = 0 - current_pitch_deg;
+    }
+
+    
+    // 3. 俯仰角度环PID计算
+    float pitch_angle_p = bicopter_pitch_angle_p * pitch_angle_error;
+    
+    bicopter_angle_integral += pitch_angle_error * dt_s;
+    bicopter_angle_integral = constrain_float(bicopter_angle_integral, 
+                                            -bicopter_pitch_angle_imax, 
+                                            bicopter_pitch_angle_imax);
+    
+    float pitch_angle_i = bicopter_pitch_angle_i * bicopter_angle_integral;
+    
+    float pitch_angle_d_input = (pitch_angle_error - bicopter_last_pitch_error) / dt_s;
+    bicopter_last_pitch_error = pitch_angle_error;
+    float pitch_angle_d = bicopter_pitch_angle_d * pitch_angle_d_input;
+    
+    // 4. 计算期望俯仰角速度（外环输出）
+    float pitch_angle_diff = pitch_angle_p + pitch_angle_i + pitch_angle_d;
+
+    pitch_angle_diff = constrain_float(pitch_angle_diff, 
+                                        -1.0f, 
+                                        1.0f);
+
+    // arcsin 反解倾转角：b = arcsin(clip(-M_cmd/(k*T), 0, 1))
+    // pitch_angle_diff 已归一化为 [-1,1]，对应 M_cmd/(k*T)
+    float arcsin_input = constrain_float(pitch_angle_diff, -1.0f, 1.0f);
+    
+    pitch_angle_diff = asinf(arcsin_input);
+
+    float extra_elevator = 0;
+    
+    // 内环：俯仰角速度控制 (Pitch Rate Error → Motor Differential)
+    float current_pitch_rate = plane.ahrs.get_gyro().y * RAD_TO_DEG;  // rad/s → deg/s
+    float pitch_rate_error = extra_elevator - current_pitch_rate;
+    
+    // 5. 俯仰角速度环PID计算
+    float pitch_rate_p = bicopter_pitch_rate_p * pitch_rate_error;
+    
+    bicopter_rate_integral += pitch_rate_error * dt_s;
+    bicopter_rate_integral = constrain_float(bicopter_rate_integral, 
+                                            -bicopter_pitch_rate_imax, 
+                                            bicopter_pitch_rate_imax);
+    
+    // 根据角度误差大小调整积分项
+    if (fabsf(pitch_angle_error) < 0.5f) {
+        bicopter_rate_integral = 0.0f;  // 极小误差：清零
+    } else if (fabsf(pitch_angle_error) < 1.0f) {
+        bicopter_rate_integral *= 0.8f;  // 小误差：快速衰减
+    }
+    
+    log_pitch_rate_integral = bicopter_rate_integral;
+
+    float pitch_rate_i = bicopter_pitch_rate_i * bicopter_rate_integral;
+    
+    float pitch_rate_d_input = (pitch_rate_error - bicopter_last_rate_error) / dt_s;
+    bicopter_last_rate_error = pitch_rate_error;
+    
+    float pitch_rate_d = bicopter_pitch_rate_d * pitch_rate_d_input;
+    
+    // 6. 计算俯仰电机差分输出（内环输出）
+    pitch_differential = pitch_rate_p + pitch_rate_i + pitch_rate_d;
+    pitch_differential = constrain_float(pitch_differential, -1.0f, 1.0f);
+
+    pitch_differential = pitch_angle_diff * angle_k + pitch_differential * (1.0f - angle_k);
+
+    log_pitch_rate_error = pitch_rate_error / MAX((float)bicopter_max_rate_dps, 1.0f); // [-1, 1]
+    log_pitch_rate_p     = pitch_rate_p;                                                // 原始P分量
+
+    // ========== 组合输出到左右倾转电机 ==========
+    float pitch_range = zero_out;
+    float pitch_diff = pitch_differential * pitch_range;
+    
+    // 添加角度前馈输出到俯仰差分
+    float feedforward_diff = feedforward_sign * feedforward_output * pitch_range * (angle_max / 30.0f);
+    pitch_diff += feedforward_diff;
+    
+    if (pitch_diff > bicopter_max_motor_diff) {
+        pitch_diff = bicopter_max_motor_diff;
+    } else if (pitch_diff < -bicopter_max_motor_diff) {
+        pitch_diff = -bicopter_max_motor_diff;
+    }
+
+
+    float left_tilt = base_output + left_pitch_sign * pitch_diff;
+
+    if (plane.control_mode == &plane.mode_fbwa) {
+        left_tilt = base_output;
+    }
+    current_tilt = left_tilt;
+
+    // 限制输出范围并转换为舵机信号 (0-1000)
+    left_motor_output = 1000 * constrain_float(left_tilt, 0.0, 1.0);
+    
+    // 使用计数器交替更新电机：奇数更新左电机，偶数更新右电机
+    // 奇数：更新左电机
+    SRV_Channels::set_output_scaled(SRV_Channel::k_scripting1, left_motor_output);
+}
+
+
 /*
   双旋翼串级PID控制
   俯仰控制：角度误差 → 期望角速度 → 电机差分输出
@@ -1646,8 +1800,14 @@ void Tiltrotor::bicopter_update()
         if (ch10_high) {
             // 高位：使用通道9的闭环倾转角度控制
             // 根据MPU6050反馈调整倾转角度到目标值
-            // transition_pid_get_rate();
-            transition_get_rate(zero_out, pitch_angle_error, pitch_differential, left_motor_output);
+            // // transition_pid_get_rate();
+            // transition_get_rate(zero_out, pitch_angle_error, pitch_differential, left_motor_output);
+
+            vtol_pid_arcsin_rate(adjusted_base_output, zero_out, 
+                            pitch_differential, yaw_differential,
+                            pitch_angle_error, desired_pitch_rate,
+                            yaw_angle_error, desired_yaw_rate,
+                            left_motor_output, right_motor_output);
         } else {
             // 低位：使用默认的VTOL PID控制
             vtol_pid_get_rate(adjusted_base_output, zero_out, 

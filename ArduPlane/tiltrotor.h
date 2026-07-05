@@ -256,6 +256,13 @@ private:
     void bicopter_update();
     
     // 垂直姿态飞行PID计算
+    void vtol_pid_arcsin_rate(float base_output, float zero_out, 
+                           float &pitch_differential, float &yaw_differential,
+                           float &pitch_angle_error, float &desired_pitch_rate,
+                           float &yaw_angle_error, float &desired_yaw_rate,
+                           float &left_motor_output, float &right_motor_output);
+
+    // 垂直姿态飞行PID计算
     void vtol_pid_get_rate(float base_output, float zero_out, 
                            float &pitch_differential, float &yaw_differential,
                            float &pitch_angle_error, float &desired_pitch_rate,
