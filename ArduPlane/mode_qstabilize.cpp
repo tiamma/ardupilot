@@ -31,45 +31,70 @@ void ModeQStabilize::run()
 {
     float tilt_angle_deg = plane.tilt_angle_cd * 0.01f;
     
-    // ========== 原有VTOL悬停控制 ==========
-    const float rudder_input = (float)plane.channel_rudder->get_control_in() / plane.channel_rudder->get_range();
+    if (tilt_angle_deg > 30.0f) {
+        // ========== FBWA风格控制 ==========
+        // set nav_roll and nav_pitch using sticks
+        plane.nav_roll_cd = plane.channel_roll->norm_input() * plane.roll_limit_cd;
+        plane.update_load_factor();
         
-    const uint32_t now = AP_HAL::millis();
-    if (quadplane.tailsitter.in_vtol_transition(now)) {
-        // Tailsitters in FW pull up phase of VTOL transition run FW controllers
+        // CH12低位：使用摇杆控制俯仰
+        float pitch_input = plane.channel_pitch->norm_input();
+        if (pitch_input > 0) {
+            plane.nav_pitch_cd = pitch_input * plane.aparm.pitch_limit_max * 100;
+        } else {
+            plane.nav_pitch_cd = -(pitch_input * plane.pitch_limit_min * 100);
+        }
+        plane.adjust_nav_pitch_throttle();
+        plane.nav_pitch_cd = constrain_int32(plane.nav_pitch_cd, 
+                                                plane.pitch_limit_min * 100, 
+                                                plane.aparm.pitch_limit_max.get() * 100);
+        
+        const float throttle = plane.get_throttle_input(true);
+        SRV_Channels::set_output_scaled(SRV_Channel::k_throttle, throttle);
+        // Run base class function and then output throttle
         Mode::run();
-        return;
-    }
+    } else {
 
-    plane.quadplane.assign_tilt_to_fwd_thr();
+        // ========== 原有VTOL悬停控制 ==========
+        const float rudder_input = (float)plane.channel_rudder->get_control_in() / plane.channel_rudder->get_range();
+            
+        const uint32_t now = AP_HAL::millis();
+        if (quadplane.tailsitter.in_vtol_transition(now)) {
+            // Tailsitters in FW pull up phase of VTOL transition run FW controllers
+            Mode::run();
+            return;
+        }
 
-    // special check for ESC calibration in QSTABILIZE
-    if (quadplane.esc_calibration != 0) {
-        quadplane.run_esc_calibration();
-        plane.stabilize_roll();
+        plane.quadplane.assign_tilt_to_fwd_thr();
+
+        // special check for ESC calibration in QSTABILIZE
+        if (quadplane.esc_calibration != 0) {
+            quadplane.run_esc_calibration();
+            plane.stabilize_roll();
+            plane.stabilize_pitch();
+            return;
+        }
+
+        // normal QSTABILIZE mode
+        float pilot_throttle_scaled = quadplane.get_pilot_throttle();
+        quadplane.hold_stabilize(pilot_throttle_scaled);
+        // 方向舵摇杆 → 期望偏航速率（deg/s）
+        // 使用VTOL_YAW_INPUT_RT参数定义最大角速度
+        const float desired_yaw_rate_dps = rudder_input * plane.g2.vtol_yaw_input_rate;
+
+        // 根据倾转角度计算缩放系数：0°时=1.0，30°时=0.0
+        // 线性映射：scaling = 1.0 - (tilt_angle / 30.0)
+        const float max_tilt_for_yaw = 30.0f;  // 最大有效倾转角度
+        const float scaling = constrain_float(1.0f - (tilt_angle_deg / max_tilt_for_yaw), 0.0f, 1.0f);
+
+        // 使用纯角速度控制（无角度环）
+        plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps, scaling);
+
+        // plane.stabilize_roll();
         plane.stabilize_pitch();
-        return;
+        // Center rudder
+        output_rudder_and_steering(0.0);
     }
-
-    // normal QSTABILIZE mode
-    float pilot_throttle_scaled = quadplane.get_pilot_throttle();
-    quadplane.hold_stabilize(pilot_throttle_scaled);
-    // 方向舵摇杆 → 期望偏航速率（deg/s）
-    // 使用VTOL_YAW_INPUT_RT参数定义最大角速度
-    const float desired_yaw_rate_dps = rudder_input * plane.g2.vtol_yaw_input_rate;
-
-    // 根据倾转角度计算缩放系数：0°时=1.0，30°时=0.0
-    // 线性映射：scaling = 1.0 - (tilt_angle / 30.0)
-    const float max_tilt_for_yaw = 30.0f;  // 最大有效倾转角度
-    const float scaling = constrain_float(1.0f - (tilt_angle_deg / max_tilt_for_yaw), 0.0f, 1.0f);
-
-    // 使用纯角速度控制（无角度环）
-    plane.stabilize_vtol_yaw_rate(desired_yaw_rate_dps, scaling);
-
-    // plane.stabilize_roll();
-    // plane.stabilize_pitch();
-    // Center rudder
-    output_rudder_and_steering(0.0);
 }
 
 // set the desired roll and pitch for a tailsitter

@@ -108,6 +108,7 @@ public:
     AP_Float bicopter_pitch_angle_i;     // 角度I增益
     AP_Float bicopter_pitch_angle_d;     // 角度D增益
     AP_Float bicopter_pitch_angle_imax;  // 角度积分限幅
+    AP_Float bicopter_pitch_angle_pb;    // 后仰时角度P增益
     
     // 内环：角速度控制 (Pitch Rate Error → Motor Differential)
     AP_Float bicopter_pitch_rate_p;      // 角速度P增益

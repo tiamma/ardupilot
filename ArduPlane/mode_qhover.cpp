@@ -79,7 +79,7 @@ void ModeQHover::run()
 
         // Stabilize with fixed wing surfaces
         // plane.stabilize_roll();
-        // plane.stabilize_pitch();
+        plane.stabilize_pitch();
         
         const float desired_yaw_rate_dps = rudder_input * plane.g2.vtol_yaw_input_rate;
         // 使用纯角速度控制（无角度环）

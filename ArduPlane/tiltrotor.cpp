@@ -397,6 +397,13 @@ const AP_Param::GroupInfo Tiltrotor::var_info[] = {
     // @User: Standard
     AP_GROUPINFO("ANG_SC", 52, Tiltrotor, tilt_angle_scale, 5.0),
 
+    // @Param: P_ANG_PB
+    // @DisplayName: Bicopter pitch angle P gain for backward
+    // @Description: Outer loop pitch angle P gain for bicopter control when pitching backward (negative pitch)
+    // @Range: 0 10
+    // @User: Standard
+    AP_GROUPINFO("P_ANG_PB", 53, Tiltrotor, bicopter_pitch_angle_pb, 2.25),
+
     AP_GROUPEND
 };
 
@@ -1412,6 +1419,12 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     // 3. 俯仰角度环PID计算
     float pitch_angle_p = bicopter_pitch_angle_p * pitch_angle_error;
     
+
+    if (current_pitch_deg > 0) {
+        pitch_angle_p = bicopter_pitch_angle_p * pitch_angle_error;
+    } else {
+        pitch_angle_p = bicopter_pitch_angle_pb * pitch_angle_error;
+    }
     bicopter_angle_integral += pitch_angle_error * dt_s;
     bicopter_angle_integral = constrain_float(bicopter_angle_integral, 
                                             -bicopter_pitch_angle_imax, 
@@ -1464,7 +1477,8 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     // 6. 计算俯仰电机差分输出（内环输出）
     pitch_differential = pitch_rate_p + pitch_rate_i + pitch_rate_d;
     pitch_differential = constrain_float(pitch_differential, -1.0f, 1.0f);
-    pitch_differential = pitch_angle_diff * angle_k + pitch_differential * (1.0f - angle_k);
+
+    pitch_differential = pitch_angle_diff * (1.0f - angle_k) + pitch_differential;
 
     log_pitch_rate_error = pitch_rate_error / MAX((float)bicopter_max_rate_dps, 1.0f); // [-1, 1]
     log_pitch_rate_p     = pitch_rate_p;                                                // 原始P分量
@@ -1533,7 +1547,7 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
     yaw_differential = constrain_float(yaw_differential, -1.0f, 1.0f);
     
     // ========== 组合输出到左右倾转电机 ==========
-    float pitch_range = zero_out;
+    float pitch_range = zero_out * 2;
     float pitch_diff = pitch_differential * pitch_range;
     
     // 添加角度前馈输出到俯仰差分
@@ -1546,11 +1560,7 @@ void Tiltrotor::vtol_pid_get_rate(float base_output, float zero_out,
         pitch_diff = -bicopter_max_motor_diff;
     }
        
-    // 计算偏航差分
-    float yaw_diff = (yaw_differential / 2.0f) * pitch_range;
-
-
-    float left_tilt = base_output + left_pitch_sign * pitch_diff - left_yaw_sign * yaw_diff;
+    float left_tilt = base_output + left_pitch_sign * pitch_diff;
     // float right_tilt = base_output + right_pitch_sign * pitch_diff + right_yaw_sign * yaw_diff;
 
     if (plane.control_mode == &plane.mode_fbwa) {
